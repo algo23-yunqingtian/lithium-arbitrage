@@ -127,6 +127,8 @@ node check_worker.mjs   # Workers 代理
   - **LI→LC（氢转碳）**：1吨LI + 加工 → `1/ratio`(=0.881) 吨LC；套利利润 = `LC价/ratio − LI价 − COST_LH2LC`；保本LC价 = `(LI价 + COST_LH2LC)×ratio`。
 - 参数在 `index.html` 顶部 `ARB` 对象（`MW_LH=42, MW_LC=37, COST_LC2LH=5000, COST_LH2LC=7000`），**页面输入框可直接改**，全部计算即时联动。改代码后请同步 `snapshot_daily.mjs` 里的 `ARB`。
 - 数值交叉验证通过：两个方向保本价回代后套利空间 = 0.000。
+- **P0 增强（`60e1a10`）**：`跟随主力`开关（默认开，自动锁定当日最活跃 LC/LI 合约，手动改合约自动关闭）；两个方向带 `✅有机会/无利` 徽标（利润>0 绿色高亮）；套利卡片显示 LC/LI 量仓（提醒流动性）。
+- 套利自检：`node check_arb.mjs`（实时拉价，算两向套利空间 + 找最活跃合约对）。
 
 ### 11.3 每日快照长期存储（GitHub 即云数据库）
 - **存储位置**：`data/history.json`（本仓库），由 **GitHub Actions**（`.github/workflows/daily-snapshot.yml`）每个工作日 15:30（北京）抓取 5 合约日K/分时最新 + 加工套利，追加当天记录并 push。
