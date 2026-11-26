@@ -64,6 +64,8 @@
   .arb-card .profit{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;}
   .arb-card .rows{font-size:11px; color:var(--muted); margin-top:6px; line-height:1.8;}
   .arb-card .rows b{color:var(--txt); font-weight:500; font-variant-numeric:tabular-nums;}
+  .arb-card .tag{font-size:10px; padding:1px 6px; border-radius:4px; background:#21262d; color:var(--muted); margin-left:6px;}
+  .arb-card .tag.ok{background:rgba(63,185,80,.15); color:#3fb950;}
   .arb-note{font-size:11px; color:var(--muted); margin-top:6px;}
   .foot{color:var(--muted); font-size:11px; text-align:center; margin-top:8px; line-height:1.6;}
   @media(max-width:900px){ .charts{grid-template-columns:1fr;} }
@@ -135,15 +137,16 @@
     <label>分子量 LC <input id="arb-mwlc" type="number" step="0.1" value="37"></label>
     <label>碳→氢加工费(元/tLI) <input id="arb-c2h" type="number" step="100" value="5000"></label>
     <label>氢→碳加工费(元/tLI) <input id="arb-h2c" type="number" step="100" value="7000"></label>
+    <label><input type="checkbox" id="arb-auto" checked> 跟随主力(最活跃)合约</label>
   </div>
   <div class="arb-cards">
     <div class="arb-card">
-      <div class="dir">LC → LI（碳转氢）<small> 1吨LC → <b id="arb-ratio-1">1.135</b> 吨LI</small></div>
+      <div class="dir">LC → LI（碳转氢）<small> 1吨LC → <b id="arb-ratio-1">1.135</b> 吨LI</small><span id="arb-lc2lh-flag" class="tag"></span></div>
       <div class="profit" id="arb-lc2lh">—</div>
       <div class="rows" id="arb-lc2lh-rows"></div>
     </div>
     <div class="arb-card">
-      <div class="dir">LI → LC（氢转碳）<small> 1吨LI → <b id="arb-ratio-2">0.881</b> 吨LC</small></div>
+      <div class="dir">LI → LC（氢转碳）<small> 1吨LI → <b id="arb-ratio-2">0.881</b> 吨LC</small><span id="arb-lh2lc-flag" class="tag"></span></div>
       <div class="profit" id="arb-lh2lc">—</div>
       <div class="rows" id="arb-lh2lc-rows"></div>
     </div>
@@ -508,9 +511,30 @@ function renderSpread(){
 }
 
 /* ================= 渲染：加工套利（LC ↔ LI） ================= */
+function mostActive(prefix){
+  let best = null, bestVol = -1;
+  for (const c of CONTRACTS){
+    if (!c.code.startsWith(prefix)) continue;
+    const rows = state.intraday[c.code];
+    const vol = (rows && rows.length) ? num(rows[rows.length-1][4]) : null;
+    if (vol !== null && vol > bestVol){ bestVol = vol; best = c.code; }
+  }
+  return best || (CONTRACTS.find(c=>c.code.startsWith(prefix)) || CONTRACTS[0]).code;
+}
+function lastVolPos(code){
+  const rows = state.intraday[code];
+  if (rows && rows.length) return { vol:num(rows[rows.length-1][4]), pos:num(rows[rows.length-1][3]) };
+  const sq = state.sec[code];
+  return { vol: sq?num(sq.vol):null, pos: sq?num(sq.pos):null };
+}
 function renderArb(){
   const lcSel = document.getElementById('arb-lc');
   const liSel = document.getElementById('arb-li');
+  const autoEl = document.getElementById('arb-auto');
+  const auto = autoEl ? autoEl.checked : true;
+  // 跟随主力：自动锁定最活跃的 LC / LI 合约
+  if (auto && lcSel) lcSel.value = mostActive('LC');
+  if (auto && liSel) liSel.value = mostActive('LI');
   const lc = lcSel ? lcSel.value : 'LC2705';
   const lh = liSel ? liSel.value : 'LI2707';
   const ratio = arbRatio();
@@ -519,13 +543,19 @@ function renderArb(){
   setTxt('arb-ratio-1', ratio.toFixed(3));
   setTxt('arb-ratio-2', (1/ratio).toFixed(3));
   const Plc = lastPrice(lc), Plh = lastPrice(lh);
+  const vpLc = lastVolPos(lc), vpLh = lastVolPos(lh);
   const c2h = document.getElementById('arb-lc2lh'), h2c = document.getElementById('arb-lh2lc');
   const c2hRows = document.getElementById('arb-lc2lh-rows'), h2cRows = document.getElementById('arb-lh2lc-rows');
+  const fC2H = document.getElementById('arb-lc2lh-flag'), fH2C = document.getElementById('arb-lh2lc-flag');
   if (Plc===null || Plh===null){
     if (c2h) c2h.textContent='—'; if (h2c) h2c.textContent='—';
     if (c2hRows) c2hRows.textContent=''; if (h2cRows) h2cRows.textContent='';
+    if (fC2H){ fC2H.textContent=''; fC2H.className='tag'; }
+    if (fH2C){ fH2C.textContent=''; fH2C.className='tag'; }
     return;
   }
+  const lcLabel = CONTRACTS.find(c=>c.code===lc) || {};
+  const liLabel = CONTRACTS.find(c=>c.code===lh) || {};
   // LC→LI（碳转氢）：1吨LC + 加工 → ratio 吨LI；加工费按 元/吨LI 计 → 每吨LC加工成本 = COST_LC2LH*ratio
   const c2hCost = ARB.COST_LC2LH * ratio;
   const profitC2H = ratio*Plh - Plc - c2hCost;       // 元/吨LC
@@ -535,8 +565,17 @@ function renderArb(){
   const beH2C = (Plh + ARB.COST_LH2LC)*ratio;        // 保本 LC 价
   if (c2h){ c2h.textContent = fmt(profitC2H,0) + ' 元/吨LC'; c2h.className = 'profit ' + cls(profitC2H); }
   if (h2c){ h2c.textContent = fmt(profitH2C,0) + ' 元/吨LI'; h2c.className = 'profit ' + cls(profitH2C); }
-  if (c2hRows) c2hRows.innerHTML = `LC <b>${fmt(Plc)}</b> × ${ratio.toFixed(3)} + 加工 <b>${fmt(c2hCost,0)}</b> → 保本LI <b>${fmt(beC2H)}</b><br>LI现价 <b>${fmt(Plh)}</b> · 套利空间 <b>${fmt(profitC2H,0)}</b>`;
-  if (h2cRows) h2cRows.innerHTML = `LI <b>${fmt(Plh)}</b> ÷ ${ratio.toFixed(3)} + 加工 <b>${fmt(ARB.COST_LH2LC,0)}</b> → 保本LC <b>${fmt(beH2C)}</b><br>LC现价 <b>${fmt(Plc)}</b> · 套利空间 <b>${fmt(profitH2C,0)}</b>`;
+  const setFlag = (el, v) => { if (!el) return; el.textContent = v>0 ? '✅ 有机会' : (v<0 ? '无利' : '持平'); el.className = 'tag' + (v>0 ? ' ok' : ''); };
+  setFlag(fC2H, profitC2H); setFlag(fH2C, profitH2C);
+  const vp = (v) => (v===null||v===undefined) ? '—' : fmtBig(v);
+  if (c2hRows) c2hRows.innerHTML =
+    `对 <b>${lcLabel.label||lc}</b> × <b>${liLabel.label||lh}</b> · 量/仓 <b>${vp(vpLc.vol)}</b>/<b>${vp(vpLc.pos)}</b> vs <b>${vp(vpLh.vol)}</b>/<b>${vp(vpLh.pos)}</b><br>` +
+    `LC <b>${fmt(Plc)}</b> × ${ratio.toFixed(3)} + 加工 <b>${fmt(c2hCost,0)}</b> → 保本LI <b>${fmt(beC2H)}</b><br>` +
+    `LI现价 <b>${fmt(Plh)}</b> · 套利空间 <b>${fmt(profitC2H,0)}</b>`;
+  if (h2cRows) h2cRows.innerHTML =
+    `对 <b>${lcLabel.label||lc}</b> × <b>${liLabel.label||lh}</b> · 量/仓 <b>${vp(vpLc.vol)}</b>/<b>${vp(vpLc.pos)}</b> vs <b>${vp(vpLh.vol)}</b>/<b>${vp(vpLh.pos)}</b><br>` +
+    `LI <b>${fmt(Plh)}</b> ÷ ${ratio.toFixed(3)} + 加工 <b>${fmt(ARB.COST_LH2LC,0)}</b> → 保本LC <b>${fmt(beH2C)}</b><br>` +
+    `LC现价 <b>${fmt(Plc)}</b> · 套利空间 <b>${fmt(profitH2C,0)}</b>`;
 }
 
 /* ================= 主刷新 ================= */
@@ -592,8 +631,11 @@ function buildSelects(){
   for (const c of liList) ah.add(new Option(c.label, c.code));
   al.value = lcList.length ? lcList[0].code : 'LC2705';
   ah.value = liList.length ? liList[0].code : 'LI2707';
-  al.onchange = renderArb;
-  ah.onchange = renderArb;
+  const autoEl = document.getElementById('arb-auto');
+  const manualPick = () => { if (autoEl) autoEl.checked = false; renderArb(); };
+  al.onchange = manualPick;   // 手动改合约 → 关闭「跟随主力」
+  ah.onchange = manualPick;
+  if (autoEl) autoEl.onchange = renderArb;
   const bindNum = (id, key) => {
     const el = document.getElementById(id);
     if (!el) return;

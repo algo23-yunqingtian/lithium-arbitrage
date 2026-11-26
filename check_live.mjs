@@ -103,6 +103,11 @@ check('每日快照历史加载（fetch data/history.json，缺失自动忽略�
 check('历史加载有 fetch 守卫（mock 环境不炸）', code.includes("typeof fetch !== 'function'"));
 check('snapshot_daily.mjs 每日快照脚本存在', fs.existsSync('snapshot_daily.mjs'));
 check('GitHub Actions 每日快照工作流存在', fs.existsSync('.github/workflows/daily-snapshot.yml'));
+check('P0: 跟随主力合约开关（arb-auto）', html.includes('id="arb-auto"'));
+check('P0: 自动选最活跃合约（mostActive 按量）', code.includes('function mostActive'));
+check('P0: 套利机会徽标（arb-lc2lh-flag/arb-lh2lc-flag）', html.includes('id="arb-lc2lh-flag"') && html.includes('id="arb-lh2lc-flag"'));
+check('P0: 套利面板显示 LC/LI 量仓', code.includes('量/仓') && code.includes('lastVolPos'));
+check('check_arb.mjs 套利自检脚本存在', fs.existsSync('check_arb.mjs'));
 
 console.log(pass ? '\n=== 全部通过 ===' : '\n=== 存在失败 ===');
 process.exit(pass ? 0 : 1);
