@@ -49,6 +49,22 @@
   .spread-panel .head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;}
   .spread-panel .title{font-size:13px; font-weight:600;}
   .spread-val{font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .arb-panel{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:14px;}
+  .arb-panel .head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:6px;}
+  .arb-panel .title{font-size:13px; font-weight:600;}
+  .arb-form{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:8px 0; font-size:12px; color:var(--muted);}
+  .arb-form label{display:inline-flex; align-items:center; gap:5px;}
+  .arb-form input, .arb-form select{background:var(--panel2); border:1px solid var(--border); color:var(--txt); border-radius:6px; padding:4px 6px; width:74px; font-size:12px;}
+  .arb-form select{width:auto;}
+  .arb-form input:focus{border-color:var(--accent); outline:none;}
+  .arb-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:10px;}
+  .arb-card{background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:10px 12px;}
+  .arb-card .dir{font-size:12px; color:var(--muted); margin-bottom:4px;}
+  .arb-card .dir b{color:var(--txt);}
+  .arb-card .profit{font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .arb-card .rows{font-size:11px; color:var(--muted); margin-top:6px; line-height:1.8;}
+  .arb-card .rows b{color:var(--txt); font-weight:500; font-variant-numeric:tabular-nums;}
+  .arb-note{font-size:11px; color:var(--muted); margin-top:6px;}
   .foot{color:var(--muted); font-size:11px; text-align:center; margin-top:8px; line-height:1.6;}
   @media(max-width:900px){ .charts{grid-template-columns:1fr;} }
 </style>
@@ -107,10 +123,39 @@
   <div class="chartbox small" id="spread-chart"><div class="hint">图表加载中…</div></div>
 </div>
 
+<div class="arb-panel">
+  <div class="head">
+    <span class="title">加工套利 · 碳酸锂(LC) ↔ 氢氧化锂(LI)</span>
+    <span class="badge">理论比 1t LC → <b id="arb-ratio">1.135</b> t LI</span>
+  </div>
+  <div class="arb-form">
+    <label>LC合约 <select id="arb-lc"></select></label>
+    <label>LI(LH)合约 <select id="arb-li"></select></label>
+    <label>分子量 LI <input id="arb-mwlh" type="number" step="0.1" value="42"></label>
+    <label>分子量 LC <input id="arb-mwlc" type="number" step="0.1" value="37"></label>
+    <label>碳→氢加工费(元/tLI) <input id="arb-c2h" type="number" step="100" value="5000"></label>
+    <label>氢→碳加工费(元/tLI) <input id="arb-h2c" type="number" step="100" value="7000"></label>
+  </div>
+  <div class="arb-cards">
+    <div class="arb-card">
+      <div class="dir">LC → LI（碳转氢）<small> 1吨LC → <b id="arb-ratio-1">1.135</b> 吨LI</small></div>
+      <div class="profit" id="arb-lc2lh">—</div>
+      <div class="rows" id="arb-lc2lh-rows"></div>
+    </div>
+    <div class="arb-card">
+      <div class="dir">LI → LC（氢转碳）<small> 1吨LI → <b id="arb-ratio-2">0.881</b> 吨LC</small></div>
+      <div class="profit" id="arb-lh2lc">—</div>
+      <div class="rows" id="arb-lh2lc-rows"></div>
+    </div>
+  </div>
+  <div class="arb-note">加工费按氢氧化锂(LI，即用户所称 LH)报价；转碳酸锂方向已自动乘以/除以分子量比系数。分子量或加工费改动，右侧所有计算即时联动。</div>
+</div>
+
 <div class="foot">
   数据源：新浪财经期货行情接口（免费、无需token、JSONP 跨域直连）· 涨跌基准自动降级链：昨结算 → 昨收 → 当日开盘<br>
   仓库 <code>algo23-yunqingtian/lithium-arbitrage</code> · 纯静态页面，GitHub Pages · 碳酸锂(LC) / 氢氧化锂(LI) 均为广州期货交易所品种 · 点击卡片切换焦点合约<br>
-  可选秒级盘口：在 <code>workers/sina-quotes.worker.js</code> 部署 Cloudflare Workers 后，把 URL 填入 <code>index.html</code> 顶部的 <code>WORKER_URL</code> 即启用（不填 = 纯分钟级，失败自动降级）
+  可选秒级盘口：在 <code>workers/sina-quotes.worker.js</code> 部署 Cloudflare Workers 后，把 URL 填入 <code>index.html</code> 顶部的 <code>WORKER_URL</code> 即启用（不填 = 纯分钟级，失败自动降级）<br>
+  长期存储：<code>data/history.json</code> 每日快照（GitHub Actions 定时抓取提交，GitHub 即云数据库，可回溯任意一天）· 氢氧化锂(LI) 期货 2026-11-26 新上市，历史少属正常，快照逐日累积后日K将自动补全
 </div>
 
 <script>
@@ -127,6 +172,18 @@ const SINA = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/
 const QUOTE_MS = 5000;   // 实时报价/分时刷新（分钟级模式）
 const KLINE_MS = 30000;  // K线/价差刷新
 const DAILY_TTL = 60000; // 日K最小抓取间隔（省流量）
+
+/* ==== 加工套利参数（a/b 变量，可编辑；改动此处或页面上输入框，所有计算自动联动） ====
+   LI = 氢氧化锂（用户记作 LH，合约代码为 LI），LC = 碳酸锂
+   1吨 LC 理论 → MW_LH/MW_LC 吨 LI（42/37 ≈ 1.135）；加工费均按 元/吨LI 报价 */
+const ARB = {
+  MW_LH: 42,        // 氢氧化锂(LI) 分子质量（a 之一）
+  MW_LC: 37,        // 碳酸锂(LC) 分子质量（a 之一）
+  COST_LC2LH: 5000, // 碳转氢 加工费 元/吨LI（b 之一）
+  COST_LH2LC: 7000, // 氢转碳 加工费 元/吨LI（b 之一）
+};
+const arbRatio = () => ARB.MW_LH / ARB.MW_LC;   // 1吨LC → ratio 吨LI
+const HISTORY_PATH = 'data/history.json';       // 每日快照（GitHub 作为长期存储）
 
 /* ==== 秒级盘口（可选）：部署 workers/sina-quotes.worker.js 到 Cloudflare Workers 后填入 URL 即启用 ==== */
 const WORKER_URL   = '';    // 例 'https://sina-quotes.your-sub.workers.dev'；留空 = 纯分钟级模式
@@ -148,6 +205,7 @@ const state = {
   focus: CONTRACTS[0].code,
   klineType: 1,        // 1/3/5/15/30/60 或 'daily'
   paused:false, lastUpdate:null, _dailyTs:{},
+  hist:{ days:[], arb:null },   // 每日快照历史（GitHub 长期存储）
 };
 
 /* ================= JSONP（串行，规避 window._ 覆盖） ================= */
@@ -246,7 +304,36 @@ async function fetchSec(){
 }
 
 function klineRows(code){
-  return state.klineType==='daily' ? state.daily[code] : state.kline[code];
+  if (state.klineType !== 'daily') return state.kline[code];
+  // 日K：合并「本站每日快照历史」+「新浪实时日K」（实时优先、按日期去重排序）
+  const live = state.daily[code] || [];
+  const hist = (state.hist.days||[]).map(d => {
+    const q = d.quotes && d.quotes[code];
+    if (!q) return null;
+    return { d:String(q.date||d.date), o:q.o, h:q.h, l:q.l, c:q.c, v:q.v, p:q.p, s:q.s };
+  }).filter(Boolean);
+  const map = new Map();
+  for (const b of hist) map.set(String(b.d).slice(0,10), b);
+  for (const b of live)  map.set(String(b.d).slice(0,10), b);
+  return Array.from(map.values()).sort((a,b)=>String(a.d)<String(b.d)?-1:1);
+}
+/* 加载每日快照历史（GitHub Pages 同源 data/history.json；不存在则忽略） */
+async function loadHistory(){
+  if (typeof fetch !== 'function') return;
+  try {
+    const r = await fetch(HISTORY_PATH, { cache:'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (j && Array.isArray(j.days)) state.hist = j;
+  } catch(e){ /* 历史缺失/网络受限：纯实时模式不受影响 */ }
+}
+/* 最新价（分时最后一点，秒级模式优先） */
+function lastPrice(code){
+  const rows = state.intraday[code];
+  if (rows && rows.length){ const v = num(rows[rows.length-1][1]); if (v!==null) return v; }
+  const sq = state.sec[code];
+  if (sq && sq.latest != null) return num(sq.latest);
+  return null;
 }
 
 /* ================= 渲染：实时卡片 ================= */
@@ -309,6 +396,7 @@ function renderKline(){
   const dates  = rows.map(r => xLabel(r.d, type));
   const kdata  = rows.map(r => [num(r.o), num(r.c), num(r.l), num(r.h)]);
   const vols   = rows.map(r => num(r.v)||0);
+  const poss   = rows.map(r => num(r.p)||0);
   const closes = rows.map(r => num(r.c));
   const ma = (n) => closes.map((_,i)=> i+1<n ? null : +(closes.slice(i+1-n,i+1).reduce((a,b)=>a+b,0)/n).toFixed(1));
   if (!klineChart){
@@ -316,26 +404,38 @@ function renderKline(){
     el.innerHTML = '';
     klineChart = echarts.init(el);
   }
+  const N = rows.length;
+  const defStart = N > 320 ? (100 - 320/N*100) : 0;   // 默认显示最近 320 根（数据不足则全显）
   klineChart.setOption({
     backgroundColor:'transparent', animation:false,
-    grid:[{left:56,right:16,top:16,height:'56%'},{left:56,right:16,top:'74%',height:'18%'}],
+    grid:[
+      {left:56,right:16,top:14,height:'46%'},
+      {left:56,right:16,top:'58%',height:'15%'},
+      {left:56,right:16,top:'77%',height:'13%'},
+    ],
     tooltip:{trigger:'axis',axisPointer:{type:'cross'},backgroundColor:'#21262d',borderColor:'#30363d',textStyle:{color:'#e6edf3'}},
     axisPointer:{link:[{xAxisIndex:'all'}]},
     xAxis:[
       {type:'category',data:dates,boundaryGap:true,axisLine:{lineStyle:{color:'#30363d'}},axisLabel:{color:'#8b949e',fontSize:10}},
-      {type:'category',gridIndex:1,data:dates,axisLabel:{show:false},axisLine:{lineStyle:{color:'#30363d'}}}
+      {type:'category',gridIndex:1,data:dates,axisLabel:{show:false},axisLine:{lineStyle:{color:'#30363d'}}},
+      {type:'category',gridIndex:2,data:dates,axisLabel:{show:false},axisLine:{lineStyle:{color:'#30363d'}}}
     ],
     yAxis:[
       {scale:true,splitLine:{lineStyle:{color:'#21262d'}},axisLabel:{color:'#8b949e',fontSize:10}},
-      {gridIndex:1,splitNumber:2,axisLabel:{color:'#8b949e',fontSize:10},splitLine:{show:false}}
+      {gridIndex:1,splitNumber:2,axisLabel:{color:'#8b949e',fontSize:10},splitLine:{show:false}},
+      {gridIndex:2,splitNumber:2,axisLabel:{color:'#8b949e',fontSize:10},splitLine:{show:false}}
     ],
-    dataZoom:[{type:'inside',xAxisIndex:[0,1],start:Math.max(0,100-320/rows.length),end:100}],
+    dataZoom:[
+      {type:'inside',xAxisIndex:[0,1,2],start:defStart,end:100},
+      {type:'slider',xAxisIndex:[0,1,2],bottom:2,height:16,start:defStart,end:100,textStyle:{color:'#8b949e'},borderColor:'#30363d',backgroundColor:'#161b22',fillerColor:'rgba(88,166,255,.15)'}
+    ],
     series:[
       {name:'K线',type:'candlestick',data:kdata,itemStyle:{color:'#f85149',color0:'#3fb950',borderColor:'#f85149',borderColor0:'#3fb950'}},
       {name:'MA5',type:'line',data:ma(5),smooth:true,showSymbol:false,lineStyle:{width:1,color:'#d29922'}},
       {name:'MA10',type:'line',data:ma(10),smooth:true,showSymbol:false,lineStyle:{width:1,color:'#58a6ff'}},
       {name:'MA20',type:'line',data:ma(20),smooth:true,showSymbol:false,lineStyle:{width:1,color:'#bc8cff'}},
-      {name:'成交量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:vols,itemStyle:{color:'#30363d'}}
+      {name:'成交量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:vols,itemStyle:{color:'#30363d'}},
+      {name:'持仓',type:'line',xAxisIndex:2,yAxisIndex:2,data:poss,showSymbol:false,lineStyle:{width:1,color:'#d29922'}}
     ]
   }, true);
 }
@@ -407,6 +507,38 @@ function renderSpread(){
   }, true);
 }
 
+/* ================= 渲染：加工套利（LC ↔ LI） ================= */
+function renderArb(){
+  const lcSel = document.getElementById('arb-lc');
+  const liSel = document.getElementById('arb-li');
+  const lc = lcSel ? lcSel.value : 'LC2705';
+  const lh = liSel ? liSel.value : 'LI2707';
+  const ratio = arbRatio();
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  setTxt('arb-ratio', ratio.toFixed(3));
+  setTxt('arb-ratio-1', ratio.toFixed(3));
+  setTxt('arb-ratio-2', (1/ratio).toFixed(3));
+  const Plc = lastPrice(lc), Plh = lastPrice(lh);
+  const c2h = document.getElementById('arb-lc2lh'), h2c = document.getElementById('arb-lh2lc');
+  const c2hRows = document.getElementById('arb-lc2lh-rows'), h2cRows = document.getElementById('arb-lh2lc-rows');
+  if (Plc===null || Plh===null){
+    if (c2h) c2h.textContent='—'; if (h2c) h2c.textContent='—';
+    if (c2hRows) c2hRows.textContent=''; if (h2cRows) h2cRows.textContent='';
+    return;
+  }
+  // LC→LI（碳转氢）：1吨LC + 加工 → ratio 吨LI；加工费按 元/吨LI 计 → 每吨LC加工成本 = COST_LC2LH*ratio
+  const c2hCost = ARB.COST_LC2LH * ratio;
+  const profitC2H = ratio*Plh - Plc - c2hCost;       // 元/吨LC
+  const beC2H = (Plc + c2hCost)/ratio;               // 保本 LI 价
+  // LI→LC（氢转碳）：1吨LI + 加工 → 1/ratio 吨LC；加工费按 元/吨LI 计 → 每吨LI加工成本 = COST_LH2LC
+  const profitH2C = Plc/ratio - Plh - ARB.COST_LH2LC; // 元/吨LI
+  const beH2C = (Plh + ARB.COST_LH2LC)*ratio;        // 保本 LC 价
+  if (c2h){ c2h.textContent = fmt(profitC2H,0) + ' 元/吨LC'; c2h.className = 'profit ' + cls(profitC2H); }
+  if (h2c){ h2c.textContent = fmt(profitH2C,0) + ' 元/吨LI'; h2c.className = 'profit ' + cls(profitH2C); }
+  if (c2hRows) c2hRows.innerHTML = `LC <b>${fmt(Plc)}</b> × ${ratio.toFixed(3)} + 加工 <b>${fmt(c2hCost,0)}</b> → 保本LI <b>${fmt(beC2H)}</b><br>LI现价 <b>${fmt(Plh)}</b> · 套利空间 <b>${fmt(profitC2H,0)}</b>`;
+  if (h2cRows) h2cRows.innerHTML = `LI <b>${fmt(Plh)}</b> ÷ ${ratio.toFixed(3)} + 加工 <b>${fmt(ARB.COST_LH2LC,0)}</b> → 保本LC <b>${fmt(beH2C)}</b><br>LC现价 <b>${fmt(Plc)}</b> · 套利空间 <b>${fmt(profitH2C,0)}</b>`;
+}
+
 /* ================= 主刷新 ================= */
 async function refreshQuote(){
   if (state.paused) return;
@@ -419,6 +551,7 @@ async function refreshQuote(){
   }
   renderCards();
   renderIntraday();
+  renderArb();
   if (failed === CONTRACTS.length) setStatus('⚠ 行情接口暂无数据（非交易时段或网络受限）', true);
   else { state.lastUpdate = new Date(); setStatus('更新于 ' + state.lastUpdate.toLocaleTimeString('zh-CN') + ' · 数据源：新浪财经期货' + (state.secMode ? ' · 秒级盘口(Workers)' : ' · 分钟级(分时)'), false); }
 }
@@ -449,13 +582,35 @@ function buildSelects(){
   sel.onchange = () => selectContract(sel.value);
   sa.onchange = renderSpread;
   sb.onchange = renderSpread;
+
+  // ==== 加工套利表单：LC 合约 / LI 合约 / 分子量 / 加工费（a/b 变量，改任意一项即时联动） ====
+  const al = document.getElementById('arb-lc');
+  const ah = document.getElementById('arb-li');
+  const lcList = CONTRACTS.filter(c => c.code.startsWith('LC'));
+  const liList = CONTRACTS.filter(c => c.code.startsWith('LI'));
+  for (const c of lcList) al.add(new Option(c.label, c.code));
+  for (const c of liList) ah.add(new Option(c.label, c.code));
+  al.value = lcList.length ? lcList[0].code : 'LC2705';
+  ah.value = liList.length ? liList[0].code : 'LI2707';
+  al.onchange = renderArb;
+  ah.onchange = renderArb;
+  const bindNum = (id, key) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = ARB[key];
+    el.onchange = () => { const v = parseFloat(el.value); if (!isNaN(v)){ ARB[key] = v; renderArb(); } };
+  };
+  bindNum('arb-mwlh', 'MW_LH');
+  bindNum('arb-mwlc', 'MW_LC');
+  bindNum('arb-c2h', 'COST_LC2LH');
+  bindNum('arb-h2c', 'COST_LH2LC');
 }
 function selectContract(code){
   if (!code) return;
   state.focus = code;
   const sel = document.getElementById('intraday-sel');
   if (sel) sel.value = code;
-  renderCards(); renderKline(); renderIntraday(); renderSpread();
+  renderCards(); renderKline(); renderIntraday(); renderSpread(); renderArb();
 }
 function buildTabs(){
   const tabs = document.getElementById('kline-tabs');
@@ -504,10 +659,11 @@ async function start(){
     setStatus('⚠ ECharts 加载失败：' + e.message + '（图表不可用，报价卡片仍可看）', true);
   }
   for (const c of CONTRACTS) await fetchDaily(c.code, true);
+  await loadHistory();           // 每日快照历史（data/history.json，缺失则纯实时）
   await refreshQuote();
   await refreshKline();
   resolveAllBase();
-  renderCards(); renderIntraday(); renderSpread();
+  renderCards(); renderIntraday(); renderSpread(); renderArb();
   setInterval(refreshQuote, QUOTE_MS);
   setInterval(refreshKline, KLINE_MS);
 

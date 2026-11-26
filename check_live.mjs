@@ -91,5 +91,18 @@ check('实时卡片渲染数量 = 5', cards.children.length === 5, `got ${cards.
 check('状态栏有更新时间', (status.textContent||'').includes('更新'), status.textContent);
 check('价差最新值已更新', spreadLatest.textContent && spreadLatest.textContent !== '—', spreadLatest.textContent);
 
+// ==== 新增：加工套利 / 持仓副图 / 缩放滑块 / 历史快照 ====
+check('加工套利面板已加入（LC↔LI 双方向卡片）', html.includes('id="arb-lc2lh"') && html.includes('id="arb-lh2lc"'));
+check('加工套利 a/b 变量可配置（分子量+加工费）', code.includes('MW_LH: 42') && code.includes('MW_LC: 37') && code.includes('COST_LC2LH: 5000') && code.includes('COST_LH2LC: 7000'));
+check('加工套利 1t LC→ratio t LI 换算（42/37）', code.includes('const arbRatio = () => ARB.MW_LH / ARB.MW_LC'));
+check('加工套利双方向含系数（转碳酸锂乘/除系数）', code.includes('ratio*Plh - Plc') && code.includes('Plc/ratio - Plh'));
+check('K线含持仓副图（.p 字段，实时）', code.includes("rows.map(r => num(r.p)||0)") && code.includes("name:'持仓'"));
+check('K线含成交量副图（.v 字段）', code.includes("rows.map(r => num(r.v)||0)"));
+check('K线默认显示更多根 + 缩放滑块（dataZoom slider）', code.includes("type:'slider'") && code.includes('defStart'));
+check('每日快照历史加载（fetch data/history.json，缺失自动忽略）', code.includes("loadHistory") && code.includes("HISTORY_PATH"));
+check('历史加载有 fetch 守卫（mock 环境不炸）', code.includes("typeof fetch !== 'function'"));
+check('snapshot_daily.mjs 每日快照脚本存在', fs.existsSync('snapshot_daily.mjs'));
+check('GitHub Actions 每日快照工作流存在', fs.existsSync('.github/workflows/daily-snapshot.yml'));
+
 console.log(pass ? '\n=== 全部通过 ===' : '\n=== 存在失败 ===');
 process.exit(pass ? 0 : 1);
