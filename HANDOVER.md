@@ -26,8 +26,9 @@
 - [x] 页面开发完成，三套验证全绿
 - [x] 本地 git 仓库已初始化并提交（`88b9659`，2 commits）
 - [x] 远端已配置为 SSH
-- [x] **已推送 GitHub**：`main = 77f049f`（`github.com:algo23-yunqingtian/lithium-arbitrage.git`）
+- [x] **已推送 GitHub**：`main = 1615424`（`github.com:algo23-yunqingtian/lithium-arbitrage.git`）
 - [x] **GitHub Pages 已开启并上线**：`https://algo23-yunqingtian.github.io/lithium-arbitrage/`（HTTP 200，2026-11-26 实测验证，标题/合约/配置均正确）
+- [x] **V2 增强已上线**（`1615424`，2026-11-26）：K线显示增强 + LC↔LI 加工套利 + 每日快照长期存储
 
 **后续推送（其他 agent）**：
 ```powershell
@@ -112,3 +113,24 @@ node check_worker.mjs   # Workers 代理
 - **GitHub Pages 在中国大陆访问常慢/不稳**：图表空白的头号怀疑对象是 ECharts CDN。页面已做多级降级（npmmirror → bootcdn → staticfile → jsdelivr），若仍空白，改用国内静态托管。
 - 报价精度：分钟级模式取当日分时最新点（分钟级），秒级模式才是 tick 级。
 - 非交易时段接口正常返回，但数据是上一交易日/上一时段，卡片会显示 `undefined`→ 已用 `todayStr()` 兜底。
+
+## 11. V2 增强（2026-11-26，commit `1615424`）
+
+### 11.1 K线显示增强
+- 默认显示**最近 320 根**（不足则全显），底部新增**缩放滑块**，可拉到全量（LC 1分≈1023 根）。
+- 新增**成交量 + 持仓双副图**：分钟K线对象自带 `.v`（成交量）和 `.p`（持仓），随实时刷新。
+- ⚠️ **氢氧化锂(LI) 期货 2026-11-26 新上市**，新浪仅有当日数据（1分≈225 根、60分≈4 根）。你看到"四五根K线"不是 bug，是 LI 历史只有今天。LC 历史充足（1分 1023 根、日K 128 根）。
+
+### 11.2 LC ↔ LI 加工套利（a/b 变量）
+- 公式（加工费按 元/吨氢氧化锂 报价）：
+  - **LC→LI（碳转氢）**：1吨LC + 加工 → `MW_LH/MW_LC`(=42/37≈1.135) 吨LI；每吨LC加工成本 = `COST_LC2LH × ratio`；套利利润 = `ratio×LI价 − LC价 − COST_LC2LH×ratio`；保本LI价 = `(LC价 + COST_LC2LH×ratio)/ratio`。
+  - **LI→LC（氢转碳）**：1吨LI + 加工 → `1/ratio`(=0.881) 吨LC；套利利润 = `LC价/ratio − LI价 − COST_LH2LC`；保本LC价 = `(LI价 + COST_LH2LC)×ratio`。
+- 参数在 `index.html` 顶部 `ARB` 对象（`MW_LH=42, MW_LC=37, COST_LC2LH=5000, COST_LH2LC=7000`），**页面输入框可直接改**，全部计算即时联动。改代码后请同步 `snapshot_daily.mjs` 里的 `ARB`。
+- 数值交叉验证通过：两个方向保本价回代后套利空间 = 0.000。
+
+### 11.3 每日快照长期存储（GitHub 即云数据库）
+- **存储位置**：`data/history.json`（本仓库），由 **GitHub Actions**（`.github/workflows/daily-snapshot.yml`）每个工作日 15:30（北京）抓取 5 合约日K/分时最新 + 加工套利，追加当天记录并 push。
+- **为什么是 GitHub**：免费、云端、带版本历史（每天一个 commit 即恢复点）、无需 token（用 GITHUB_TOKEN）、可公开查看。一年后可 `git log` / 网页回溯任意一天的价格。
+- 页面「日K」标签会自动合并 `data/history.json` 历史 + 新浪实时日K，随快照逐日累积，LI 的日K会自动补全。
+- ⚠️ 前提：仓库 `Settings → Actions → General → Workflow permissions` 需为 **Read and write permissions**（否则 Actions 无法 push 数据；默认通常是 R/W，若未生效请确认）。
+- 本地手动跑一次：`node snapshot_daily.mjs`（覆盖/追加今天）。
