@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>lithium-arbitrage · 锂期货实时看板（LC/LI 分钟K线+实时报价）</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --border:#30363d;
+    --txt:#e6edf3; --muted:#8b949e; --up:#f85149; --down:#3fb950; --accent:#58a6ff;
+    --amber:#d29922; --err:#f85149;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--txt); font-family:'Segoe UI',system-ui,-apple-system,'Microsoft YaHei',sans-serif; padding:16px;}
+  h1{font-size:18px; font-weight:600; letter-spacing:.3px;}
+  .sub{color:var(--muted); font-size:12px; margin-top:2px;}
+  .topbar{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px;}
+  .topbar .right{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .badge{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:5px 10px; font-size:12px; color:var(--muted);}
+  .badge b{color:var(--accent);}
+  .badge.err b{color:var(--err);}
+  .btn{background:var(--panel2); border:1px solid var(--border); color:var(--txt); border-radius:6px; padding:5px 12px; font-size:12px; cursor:pointer; transition:.15s;}
+  .btn:hover{border-color:var(--accent); color:var(--accent);}
+  .btn.active{background:var(--accent); color:#0d1117; border-color:var(--accent); font-weight:600;}
+  select{background:var(--panel2); border:1px solid var(--border); color:var(--txt); border-radius:6px; padding:5px 8px; font-size:12px;}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-bottom:14px;}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px; cursor:pointer; transition:.15s;}
+  .card:hover{border-color:var(--accent); transform:translateY(-1px);}
+  .card.on{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset;}
+  .card .name{font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:space-between;}
+  .card .name .tag{font-size:10px; padding:2px 6px; border-radius:4px; background:#21262d; color:var(--muted);}
+  .card .price{font-size:26px; font-weight:700; margin:6px 0 2px; font-variant-numeric:tabular-nums;}
+  .card .chg{font-size:12px; font-variant-numeric:tabular-nums;}
+  .card .grid{display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; margin-top:8px; font-size:11px; color:var(--muted);}
+  .card .grid span{display:flex; justify-content:space-between;}
+  .card .grid b{color:var(--txt); font-weight:500; font-variant-numeric:tabular-nums;}
+  .card .time{font-size:10px; color:var(--muted); margin-top:8px;}
+  .up{color:var(--up);} .down{color:var(--down);} .flat{color:var(--muted);}
+  .charts{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;}
+  .panel{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 12px; min-height:340px;}
+  .panel .head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px;}
+  .panel .title{font-size:13px; font-weight:600;}
+  .panel .title small{color:var(--muted); font-weight:400; margin-left:6px;}
+  .chartbox{width:100%; height:300px;}
+  .chartbox.small{height:240px;}
+  .hint{color:var(--muted); font-size:12px; text-align:center; padding:120px 0;}
+  .tabs{display:flex; gap:5px; flex-wrap:wrap;}
+  .spread-panel{background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:14px;}
+  .spread-panel .head{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;}
+  .spread-panel .title{font-size:13px; font-weight:600;}
+  .spread-val{font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;}
+  .foot{color:var(--muted); font-size:11px; text-align:center; margin-top:8px; line-height:1.6;}
+  @media(max-width:900px){ .charts{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>锂期货实时看板 <span class="sub">lithium-arbitrage · 碳酸锂(LC) / 氢氧化锂(LI) · 分钟K线 + 实时报价</span></h1>
+    <div class="sub" id="status">正在连接新浪行情…</div>
+  </div>
+  <div class="right">
+    <span class="badge" id="rate-badge">刷新 <b>报价5s / K线30s</b></span>
+    <button class="btn" id="btn-pause">暂停</button>
+    <button class="btn" id="btn-refresh">立即刷新</button>
+  </div>
+</div>
+
+<div class="cards" id="cards"></div>
+
+<div class="charts">
+  <div class="panel">
+    <div class="head">
+      <div class="title" id="kline-title">K线<small>点击卡片切换合约</small></div>
+      <div class="tabs" id="kline-tabs">
+        <button class="btn active" data-t="1">1分</button>
+        <button class="btn" data-t="3">3分</button>
+        <button class="btn" data-t="5">5分</button>
+        <button class="btn" data-t="15">15分</button>
+        <button class="btn" data-t="30">30分</button>
+        <button class="btn" data-t="60">60分</button>
+        <button class="btn" data-t="daily">日K</button>
+      </div>
+    </div>
+    <div class="chartbox" id="kline-chart"><div class="hint">图表加载中…</div></div>
+  </div>
+  <div class="panel">
+    <div class="head">
+      <div class="title" id="intraday-title">当日分时 · 实时</div>
+      <select id="intraday-sel"></select>
+    </div>
+    <div class="chartbox" id="intraday-chart"><div class="hint">图表加载中…</div></div>
+  </div>
+</div>
+
+<div class="spread-panel">
+  <div class="head">
+    <span class="title">价差监控</span>
+    <select id="spread-a"></select>
+    <span style="color:var(--muted)">−</span>
+    <select id="spread-b"></select>
+    <span style="color:var(--muted)">最新价差</span>
+    <span class="spread-val" id="spread-latest">—</span>
+    <span id="spread-chg" class="chg"></span>
+  </div>
+  <div class="chartbox small" id="spread-chart"><div class="hint">图表加载中…</div></div>
+</div>
+
+<div class="foot">
+  数据源：新浪财经期货行情接口（免费、无需token、JSONP 跨域直连）· 涨跌基准自动降级链：昨结算 → 昨收 → 当日开盘<br>
+  仓库 <code>algo23-yunqingtian/lithium-arbitrage</code> · 纯静态页面，GitHub Pages · 碳酸锂(LC) / 氢氧化锂(LI) 均为广州期货交易所品种 · 点击卡片切换焦点合约<br>
+  可选秒级盘口：在 <code>workers/sina-quotes.worker.js</code> 部署 Cloudflare Workers 后，把 URL 填入 <code>index.html</code> 顶部的 <code>WORKER_URL</code> 即启用（不填 = 纯分钟级，失败自动降级）
+</div>
+
+<script>
+'use strict';
+/* ================= 配置 ================= */
+const CONTRACTS = [
+  { code:'LC2705', label:'碳酸锂2705', market:'广期所' },
+  { code:'LC2707', label:'碳酸锂2707', market:'广期所' },
+  { code:'LC2709', label:'碳酸锂2709', market:'广期所' },
+  { code:'LI2707', label:'氢氧化锂2707', market:'广期所' },
+  { code:'LI2709', label:'氢氧化锂2709', market:'广期所' },
+];
+const SINA = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/';
+const QUOTE_MS = 5000;   // 实时报价/分时刷新（分钟级模式）
+const KLINE_MS = 30000;  // K线/价差刷新
+const DAILY_TTL = 60000; // 日K最小抓取间隔（省流量）
+
+/* ==== 秒级盘口（可选）：部署 workers/sina-quotes.worker.js 到 Cloudflare Workers 后填入 URL 即启用 ==== */
+const WORKER_URL   = '';    // 例 'https://sina-quotes.your-sub.workers.dev'；留空 = 纯分钟级模式
+const WORKER_TOKEN = '';    // 与 Workers 的 TOKEN 环境变量一致
+const SEC_MS       = 1500;  // 秒级轮询间隔
+const SEC_MAX_FAIL = 3;     // 连续失败 N 次后自动降级回分钟级
+
+const ECHARTS_CDNS = [
+  'https://registry.npmmirror.com/echarts/5.5.1/files/dist/echarts.min.js',
+  'https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js',
+  'https://cdn.staticfile.net/echarts/5.4.3/echarts.min.js',
+  'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js',
+];
+
+/* ================= 状态 ================= */
+const state = {
+  intraday:{}, kline:{}, daily:{}, prevSettle:{}, baseType:{},
+  sec:{}, secMode:false, secFails:0,
+  focus: CONTRACTS[0].code,
+  klineType: 1,        // 1/3/5/15/30/60 或 'daily'
+  paused:false, lastUpdate:null, _dailyTs:{},
+};
+
+/* ================= JSONP（串行，规避 window._ 覆盖） ================= */
+let _chain = Promise.resolve();
+function jsonp(url){
+  const p = _chain.then(() => new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.onload = () => {
+      let d = null; try { d = window._; } catch(e){}
+      if (s.parentNode) s.parentNode.removeChild(s);
+      resolve(d);
+    };
+    s.onerror = () => { if (s.parentNode) s.parentNode.removeChild(s); resolve(null); };
+    s.src = url;
+    document.head.appendChild(s);
+  }));
+  _chain = p.catch(() => {});
+  return p;
+}
+const iUrl = (sym) => SINA + 'InnerFuturesNewService.getMinLine?symbol=' + sym + '&type=1';
+const kUrl = (sym, t) => SINA + 'InnerFuturesNewService.getFewMinLine?symbol=' + sym + '&type=' + t;
+const dUrl = (sym) => SINA + 'InnerFuturesNewService.getDailyKLine?symbol=' + sym;
+
+/* ================= 工具 ================= */
+const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+const fmt = (n, d=1) => (n===null||n===undefined) ? '—' : Number(n).toFixed(d);
+const fmtBig = (n) => { if(n===null||n===undefined) return '—';
+  if(Math.abs(n)>=1e8) return (n/1e8).toFixed(2)+'亿';
+  if(Math.abs(n)>=1e4) return (n/1e4).toFixed(1)+'万';
+  return String(Math.round(n)); };
+const fmtClock = (s) => { if(!s || String(s).length<6) return '—'; const t=String(s); return t.slice(0,2)+':'+t.slice(2,4)+':'+t.slice(4,6); };
+const cls = (v) => v>0 ? 'up' : (v<0 ? 'down' : 'flat');
+const xLabel = (d, type) => { const s=String(d); return type==='daily' ? s.slice(0,10) : s.slice(5,16); };
+const todayStr = () => { const n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0'); };
+const BASE_LABEL = { settle:'较昨结', prevClose:'较昨收', open:'较开盘' };
+
+/* 涨跌基准降级链：昨结算(日K s) → 昨收(日K c) → 上一交易日分钟收盘 → 当日开盘 */
+function resolveBase(code){
+  const today = todayStr();
+  const d = state.daily[code];
+  if (Array.isArray(d) && d.length){
+    const past = d.filter(b => String(b.d) < today);
+    const b = past.length ? past[past.length-1] : d[d.length-1];
+    const s = num(b && b.s);
+    if (s){ state.prevSettle[code]=s; state.baseType[code]='settle'; return; }
+    const c = num(b && b.c);
+    if (c && past.length){ state.prevSettle[code]=c; state.baseType[code]='prevClose'; return; }
+  }
+  const k = state.kline[code];
+  if (Array.isArray(k) && k.length){
+    const past = k.filter(b => String(b.d).slice(0,10) < today);
+    if (past.length){ const b=past[past.length-1]; const c=num(b.c); if (c){ state.prevSettle[code]=c; state.baseType[code]='prevClose'; return; } }
+  }
+  const rows = state.intraday[code];
+  if (Array.isArray(rows) && rows.length){ const o=num(rows[0][1]); if (o){ state.prevSettle[code]=o; state.baseType[code]='open'; } }
+}
+function resolveAllBase(){ for (const c of CONTRACTS) resolveBase(c.code); }
+function setStatus(msg, isErr){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  const b = document.getElementById('rate-badge');
+  b.className = 'badge' + (isErr ? ' err' : '');
+}
+
+/* ================= 数据拉取 ================= */
+async function fetchIntraday(code){ const d = await jsonp(iUrl(code)); if (Array.isArray(d)) state.intraday[code]=d; }
+async function fetchKline(code, type){ const d = await jsonp(kUrl(code, type)); if (Array.isArray(d)) state.kline[code]=d; }
+async function fetchDaily(code, force){
+  const ts = state._dailyTs[code];
+  if (!force && ts && (Date.now()-ts) < DAILY_TTL) return;
+  const d = await jsonp(dUrl(code));
+  if (Array.isArray(d) && d.length){
+    state.daily[code]=d;
+    state._dailyTs[code]=Date.now();
+  }
+}
+// 秒级盘口（走 Cloudflare Workers 代理）。成功则补齐 LI 品种缺失的昨结算。
+async function fetchSec(){
+  const qs = 'symbols=' + encodeURIComponent(CONTRACTS.map(c => c.code).join(',')) +
+             (WORKER_TOKEN ? '&tk=' + encodeURIComponent(WORKER_TOKEN) : '');
+  const u = WORKER_URL + (WORKER_URL.indexOf('?') >= 0 ? '&' : '?') + qs;
+  const r = await fetch(u);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const data = await r.json();
+  if (!data || !data.quotes) throw new Error('bad payload');
+  state.sec = data.quotes;
+  state.secFails = 0;
+  for (const c of CONTRACTS) {
+    const q = data.quotes[c.code];
+    if (q && q.prevSettle && !state.prevSettle[c.code]) {
+      state.prevSettle[c.code] = q.prevSettle;
+      state.baseType[c.code] = 'settle';
+    }
+  }
+  return data;
+}
+
+function klineRows(code){
+  return state.klineType==='daily' ? state.daily[code] : state.kline[code];
+}
+
+/* ================= 渲染：实时卡片 ================= */
+function renderCards(){
+  const box = document.getElementById('cards');
+  box.innerHTML = '';
+  for (const c of CONTRACTS) {
+    const rows = state.intraday[c.code];
+    const last = (rows && rows.length) ? rows[rows.length-1] : null;
+    const first = (rows && rows.length) ? rows[0] : null;
+    const prev = state.prevSettle[c.code];
+    const sq = state.sec[c.code] || null;          // 秒级盘口（Workers 模式）
+    const pickSec = (v) => (sq && v !== null && v !== undefined) ? v : null;
+    const price = pickSec(sq && sq.latest) !== null ? sq.latest : (last ? num(last[1]) : null);
+    const avg   = last ? num(last[2]) : null;
+    const pos   = pickSec(sq && sq.pos) !== null ? sq.pos : (last ? num(last[3]) : null);
+    const vol   = pickSec(sq && sq.vol) !== null ? sq.vol : (last ? num(last[4]) : null);
+    const t     = (sq && sq.time) ? String(sq.time) : (last ? String(last[0]) : '');
+    const tFmt  = (sq && sq.time) ? fmtClock(sq.time) : fmtClock(t);
+    const date  = (sq && sq.date) ? String(sq.date) : ((rows && rows[0] && rows[0][6]) ? String(rows[0][6]) : todayStr());
+    const bLabel = BASE_LABEL[state.baseType[c.code]] || '较昨结';
+    const bid1  = pickSec(sq && sq.bid1);
+    const ask1  = pickSec(sq && sq.ask1);
+    let hi=null, lo=null;
+    if (rows) for (const r of rows) { const v=num(r[1]); if(v!==null){ if(hi===null||v>hi) hi=v; if(lo===null||v<lo) lo=v; } }
+    const open  = first ? num(first[1]) : null;
+    const chg   = (price!==null && prev!==null) ? price - prev : null;
+    const pct   = (chg!==null && prev) ? (chg/prev)*100 : null;
+    const div = document.createElement('div');
+    div.className = 'card' + (state.focus===c.code ? ' on' : '');
+    div.onclick = () => selectContract(c.code);
+    div.innerHTML = `
+      <div class="name"><span>${c.label}</span><span class="tag">${c.market}</span></div>
+      <div class="price ${cls(chg)}">${fmt(price)}</div>
+      <div class="chg ${cls(chg)}"><span>${chg===null?'—':(chg>0?'+':'')+fmt(chg)} ${pct===null?'—':(pct>0?'+':'')+pct.toFixed(2)+'%'}</span><span style="color:var(--muted);font-size:10px;margin-left:6px">${bLabel}</span></div>
+      <div class="grid">
+        <span>今开<b>${fmt(open)}</b></span>
+        <span>最高<b>${fmt(hi)}</b></span>
+        <span>最低<b>${fmt(lo)}</b></span>
+        <span>均价<b>${fmt(avg)}</b></span>
+        <span>持仓<b>${fmtBig(pos)}</b></span>
+        <span>成交量<b>${fmtBig(vol)}</b></span>
+        <span>买一<b class="down">${sq?fmt(bid1):'—'}</b></span>
+        <span>卖一<b class="up">${sq?fmt(ask1):'—'}</b></span>
+      </div>
+      <div class="time">${sq?'<span class="tag" style="color:var(--accent)">秒级</span> ':''}${date} ${tFmt} 更新</div>`;
+    box.appendChild(div);
+  }
+}
+
+/* ================= 渲染：K线 ================= */
+let klineChart=null;
+function renderKline(){
+  const rows = klineRows(state.focus);
+  const meta = CONTRACTS.find(c=>c.code===state.focus) || {};
+  const title = document.getElementById('kline-title');
+  title.innerHTML = 'K线 <small>' + (meta.label||state.focus) + ' · ' + (state.klineType==='daily'?'日K':state.klineType+'分钟') + '</small>';
+  if (!rows || !rows.length) return;
+  const type = state.klineType;
+  const dates  = rows.map(r => xLabel(r.d, type));
+  const kdata  = rows.map(r => [num(r.o), num(r.c), num(r.l), num(r.h)]);
+  const vols   = rows.map(r => num(r.v)||0);
+  const closes = rows.map(r => num(r.c));
+  const ma = (n) => closes.map((_,i)=> i+1<n ? null : +(closes.slice(i+1-n,i+1).reduce((a,b)=>a+b,0)/n).toFixed(1));
+  if (!klineChart){
+    const el = document.getElementById('kline-chart');
+    el.innerHTML = '';
+    klineChart = echarts.init(el);
+  }
+  klineChart.setOption({
+    backgroundColor:'transparent', animation:false,
+    grid:[{left:56,right:16,top:16,height:'56%'},{left:56,right:16,top:'74%',height:'18%'}],
+    tooltip:{trigger:'axis',axisPointer:{type:'cross'},backgroundColor:'#21262d',borderColor:'#30363d',textStyle:{color:'#e6edf3'}},
+    axisPointer:{link:[{xAxisIndex:'all'}]},
+    xAxis:[
+      {type:'category',data:dates,boundaryGap:true,axisLine:{lineStyle:{color:'#30363d'}},axisLabel:{color:'#8b949e',fontSize:10}},
+      {type:'category',gridIndex:1,data:dates,axisLabel:{show:false},axisLine:{lineStyle:{color:'#30363d'}}}
+    ],
+    yAxis:[
+      {scale:true,splitLine:{lineStyle:{color:'#21262d'}},axisLabel:{color:'#8b949e',fontSize:10}},
+      {gridIndex:1,splitNumber:2,axisLabel:{color:'#8b949e',fontSize:10},splitLine:{show:false}}
+    ],
+    dataZoom:[{type:'inside',xAxisIndex:[0,1],start:Math.max(0,100-320/rows.length),end:100}],
+    series:[
+      {name:'K线',type:'candlestick',data:kdata,itemStyle:{color:'#f85149',color0:'#3fb950',borderColor:'#f85149',borderColor0:'#3fb950'}},
+      {name:'MA5',type:'line',data:ma(5),smooth:true,showSymbol:false,lineStyle:{width:1,color:'#d29922'}},
+      {name:'MA10',type:'line',data:ma(10),smooth:true,showSymbol:false,lineStyle:{width:1,color:'#58a6ff'}},
+      {name:'MA20',type:'line',data:ma(20),smooth:true,showSymbol:false,lineStyle:{width:1,color:'#bc8cff'}},
+      {name:'成交量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:vols,itemStyle:{color:'#30363d'}}
+    ]
+  }, true);
+}
+
+/* ================= 渲染：当日分时 ================= */
+let intradayChart=null;
+function renderIntraday(){
+  const rows = state.intraday[state.focus];
+  if (!rows || !rows.length) return;
+  const prev = state.prevSettle[state.focus];
+  const labels = rows.map(r => String(r[0]));
+  const prices = rows.map(r => num(r[1]));
+  const avgs   = rows.map(r => num(r[2]));
+  const lastP  = prices[prices.length-1];
+  const color  = (prev!==null && lastP!==null) ? (lastP>=prev?'#f85149':'#3fb950') : '#58a6ff';
+  if (!intradayChart){
+    const el = document.getElementById('intraday-chart');
+    el.innerHTML = '';
+    intradayChart = echarts.init(el);
+  }
+  const meta = CONTRACTS.find(c=>c.code===state.focus) || {};
+  document.getElementById('intraday-title').innerHTML = '当日分时 · 实时 <small>' + (meta.label||state.focus) + '</small>';
+  intradayChart.setOption({
+    backgroundColor:'transparent', animation:false,
+    grid:{left:56,right:16,top:16,bottom:28},
+    tooltip:{trigger:'axis',backgroundColor:'#21262d',borderColor:'#30363d',textStyle:{color:'#e6edf3'}},
+    xAxis:{type:'category',data:labels,axisLine:{lineStyle:{color:'#30363d'}},axisLabel:{color:'#8b949e',fontSize:10,interval:Math.max(0,Math.floor(labels.length/8))}},
+    yAxis:{scale:true,splitLine:{lineStyle:{color:'#21262d'}},axisLabel:{color:'#8b949e',fontSize:10}},
+    series:[
+      {name:'价格',type:'line',data:prices,showSymbol:false,lineStyle:{width:1.5,color},areaStyle:{opacity:.08,color}},
+      {name:'均价',type:'line',data:avgs,showSymbol:false,lineStyle:{width:1,color:'#d29922'}},
+      ...(prev!==null?[{name:'昨结',type:'line',data:labels.map(()=>prev),showSymbol:false,silent:true,lineStyle:{width:1,type:'dashed',color:'#8b949e'}}]:[])
+    ]
+  }, true);
+}
+
+/* ================= 渲染：价差 ================= */
+let spreadChart=null;
+function renderSpread(){
+  const a = document.getElementById('spread-a').value;
+  const b = document.getElementById('spread-b').value;
+  const ka = klineRows(a), kb = klineRows(b);
+  const el = document.getElementById('spread-latest');
+  const chgEl = document.getElementById('spread-chg');
+  if (!ka || !kb || !ka.length || !kb.length){ el.textContent='—'; chgEl.textContent=''; return; }
+  const mapB = new Map(kb.map(r => [String(r.d), r]));
+  const merged = [];
+  for (const r of ka) { const rb = mapB.get(String(r.d)); if (rb) merged.push({ d:String(r.d), v: num(r.c) - num(rb.c) }); }
+  if (!merged.length){ el.textContent='—'; chgEl.textContent=''; return; }
+  const type = state.klineType;
+  const labels = merged.map(m => xLabel(m.d, type));
+  const vals = merged.map(m => m.v);
+  const latest = vals[vals.length-1], first = vals[0], chg = latest - first;
+  el.textContent = fmt(latest,0);
+  chgEl.textContent = (chg>0?'+':'')+fmt(chg,0) + ' (较首根)';
+  chgEl.className = 'chg ' + cls(chg);
+  if (!spreadChart){
+    const s = document.getElementById('spread-chart');
+    s.innerHTML = '';
+    spreadChart = echarts.init(s);
+  }
+  spreadChart.setOption({
+    backgroundColor:'transparent', animation:false,
+    grid:{left:56,right:16,top:14,bottom:28},
+    tooltip:{trigger:'axis',backgroundColor:'#21262d',borderColor:'#30363d',textStyle:{color:'#e6edf3'}},
+    xAxis:{type:'category',data:labels,axisLine:{lineStyle:{color:'#30363d'}},axisLabel:{color:'#8b949e',fontSize:10,interval:Math.max(0,Math.floor(labels.length/8))}},
+    yAxis:{scale:true,splitLine:{lineStyle:{color:'#21262d'}},axisLabel:{color:'#8b949e',fontSize:10}},
+    series:[{name:'价差',type:'line',data:vals,showSymbol:false,lineStyle:{width:1.5,color:'#58a6ff'},areaStyle:{opacity:.08,color:'#58a6ff'}}]
+  }, true);
+}
+
+/* ================= 主刷新 ================= */
+async function refreshQuote(){
+  if (state.paused) return;
+  let failed = 0;
+  for (const c of CONTRACTS) {
+    const before = (state.intraday[c.code]||[]).length;
+    await fetchIntraday(c.code);
+    if (!(state.intraday[c.code]||[]).length) failed++;
+    if ((state.intraday[c.code]||[]).length < before) failed++;
+  }
+  renderCards();
+  renderIntraday();
+  if (failed === CONTRACTS.length) setStatus('⚠ 行情接口暂无数据（非交易时段或网络受限）', true);
+  else { state.lastUpdate = new Date(); setStatus('更新于 ' + state.lastUpdate.toLocaleTimeString('zh-CN') + ' · 数据源：新浪财经期货' + (state.secMode ? ' · 秒级盘口(Workers)' : ' · 分钟级(分时)'), false); }
+}
+async function refreshKline(){
+  if (state.paused) return;
+  if (state.klineType === 'daily'){
+    for (const c of CONTRACTS) await fetchDaily(c.code);
+  } else {
+    for (const c of CONTRACTS) await fetchKline(c.code, state.klineType);
+  }
+  renderKline();
+  renderSpread();
+}
+
+/* ================= 控件 ================= */
+function buildSelects(){
+  const sel = document.getElementById('intraday-sel');
+  const sa = document.getElementById('spread-a');
+  const sb = document.getElementById('spread-b');
+  for (const c of CONTRACTS) {
+    sel.add(new Option(c.label, c.code));
+    sa.add(new Option(c.label, c.code));
+    sb.add(new Option(c.label, c.code));
+  }
+  sel.value = state.focus;
+  sa.value = CONTRACTS[0].code;
+  sb.value = CONTRACTS[1].code;
+  sel.onchange = () => selectContract(sel.value);
+  sa.onchange = renderSpread;
+  sb.onchange = renderSpread;
+}
+function selectContract(code){
+  if (!code) return;
+  state.focus = code;
+  const sel = document.getElementById('intraday-sel');
+  if (sel) sel.value = code;
+  renderCards(); renderKline(); renderIntraday(); renderSpread();
+}
+function buildTabs(){
+  const tabs = document.getElementById('kline-tabs');
+  tabs.querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => {
+      tabs.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      state.klineType = btn.dataset.t === 'daily' ? 'daily' : parseInt(btn.dataset.t, 10);
+      refreshKline();
+    };
+  });
+}
+
+/* ================= ECharts 加载（国内CDN优先，逐级降级） ================= */
+function loadECharts(i){
+  return new Promise((resolve, reject) => {
+    if (typeof echarts !== 'undefined') return resolve(echarts);
+    if (i >= ECHARTS_CDNS.length) return reject(new Error('ECharts 所有 CDN 均不可达'));
+    const s = document.createElement('script');
+    s.src = ECHARTS_CDNS[i];
+    s.onload = () => { if (typeof echarts !== 'undefined') resolve(echarts); else reject(new Error('echarts undefined')); };
+    s.onerror = () => { if (s.parentNode) s.parentNode.removeChild(s); loadECharts(i+1).then(resolve, reject); };
+    document.head.appendChild(s);
+  });
+}
+
+/* ================= 启动 ================= */
+async function start(){
+  buildSelects();
+  buildTabs();
+  const rb = document.getElementById('rate-badge');
+  if (rb) rb.innerHTML = '刷新 <b>' + (WORKER_URL ? ('秒级 ' + (SEC_MS/1000) + 's') : '报价5s / K线30s') + '</b>';
+  document.getElementById('btn-pause').onclick = () => {
+    state.paused = !state.paused;
+    document.getElementById('btn-pause').textContent = state.paused ? '继续' : '暂停';
+  };
+  document.getElementById('btn-refresh').onclick = () => { refreshQuote(); refreshKline(); };
+  window.addEventListener('resize', () => {
+    if (klineChart) klineChart.resize();
+    if (intradayChart) intradayChart.resize();
+    if (spreadChart) spreadChart.resize();
+  });
+  try {
+    await loadECharts(0);
+  } catch(e){
+    setStatus('⚠ ECharts 加载失败：' + e.message + '（图表不可用，报价卡片仍可看）', true);
+  }
+  for (const c of CONTRACTS) await fetchDaily(c.code, true);
+  await refreshQuote();
+  await refreshKline();
+  resolveAllBase();
+  renderCards(); renderIntraday(); renderSpread();
+  setInterval(refreshQuote, QUOTE_MS);
+  setInterval(refreshKline, KLINE_MS);
+
+  // ==== 秒级盘口（可选）：配置 WORKER_URL 后启用，连续失败自动降级回分钟级 ====
+  let secTimer = null;
+  if (WORKER_URL) {
+    state.secMode = true;
+    const secTick = async () => {
+      if (state.paused) return;
+      try {
+        await fetchSec();
+        renderCards();
+      } catch(e) {
+        state.secFails++;
+        if (state.secFails >= SEC_MAX_FAIL && secTimer) {
+          clearInterval(secTimer);
+          secTimer = null;
+          state.secMode = false;
+          setStatus('⚠ 秒级盘口连续失败，已降级为分钟级：' + (e && e.message ? e.message : e), true);
+          renderCards();
+        }
+      }
+    };
+    secTimer = setInterval(secTick, SEC_MS);
+    secTick();
+  }
+}
+document.addEventListener('DOMContentLoaded', () => { start(); });
+</script>
+</body>
+</html>
