@@ -152,13 +152,19 @@
     </div>
   </div>
   <div class="arb-note">加工费按氢氧化锂(LI，即用户所称 LH)报价；转碳酸锂方向已自动乘以/除以分子量比系数。分子量或加工费改动，右侧所有计算即时联动。</div>
+  <div style="margin-top:10px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span class="title" style="font-size:13px;">套利价差历史</span>
+    <span>实线=日度快照（每日收盘） · 虚线=日内快照（盘中每2-4小时） · 上方>0 为套利机会</span>
+    <span id="arb-hist-count" style="color:var(--muted);font-size:11px;"></span>
+  </div>
+  <div class="chartbox" id="arb-hist-chart" style="height:210px;margin-top:6px;"><div class="hint">套利价差历史加载中…</div></div>
 </div>
 
 <div class="foot">
   数据源：新浪财经期货行情接口（免费、无需token、JSONP 跨域直连）· 涨跌基准自动降级链：昨结算 → 昨收 → 当日开盘<br>
   仓库 <code>algo23-yunqingtian/lithium-arbitrage</code> · 纯静态页面，GitHub Pages · 碳酸锂(LC) / 氢氧化锂(LI) 均为广州期货交易所品种 · 点击卡片切换焦点合约<br>
   可选秒级盘口：在 <code>workers/sina-quotes.worker.js</code> 部署 Cloudflare Workers 后，把 URL 填入 <code>index.html</code> 顶部的 <code>WORKER_URL</code> 即启用（不填 = 纯分钟级，失败自动降级）<br>
-  长期存储：<code>data/history.json</code> 每日快照（GitHub Actions 定时抓取提交，GitHub 即云数据库，可回溯任意一天）· 氢氧化锂(LI) 期货 2026-11-26 新上市，历史少属正常，快照逐日累积后日K将自动补全
+  长期存储：<code>data/history.json</code> 每日快照 + <code>data/intraday.json</code> 日内快照（GitHub Actions 盘中多次抓取提交，GitHub 即云数据库，可回溯任意一天）· 氢氧化锂(LI) 期货 2026-11-26 新上市，历史少属正常，快照逐日累积后日K将自动补全
 </div>
 
 <script>
@@ -168,10 +174,14 @@ const CONTRACTS = [
   { code:'LC2705', label:'碳酸锂2705', market:'广期所' },
   { code:'LC2707', label:'碳酸锂2707', market:'广期所' },
   { code:'LC2709', label:'碳酸锂2709', market:'广期所' },
+  { code:'LC2711', label:'碳酸锂2711', market:'广期所' },
   { code:'LI2707', label:'氢氧化锂2707', market:'广期所' },
   { code:'LI2709', label:'氢氧化锂2709', market:'广期所' },
+  { code:'LI2711', label:'氢氧化锂2711', market:'广期所' },
 ];
-const SINA = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/';
+const SINA_HOSTS = ['stock2.finance.sina.com.cn', 'stock.finance.sina.com.cn'];  // 多源降级：主源失败自动切备用源（同API不同域名）
+let sinaHostIdx = 0;
+const sinaUrl = (ep) => 'https://' + SINA_HOSTS[sinaHostIdx] + '/futures/api/jsonp.php/var%20_=/' + ep;
 const QUOTE_MS = 5000;   // 实时报价/分时刷新（分钟级模式）
 const KLINE_MS = 30000;  // K线/价差刷新
 const DAILY_TTL = 60000; // 日K最小抓取间隔（省流量）
@@ -199,6 +209,7 @@ const ECHARTS_CDNS = [
   'https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js',
   'https://cdn.staticfile.net/echarts/5.4.3/echarts.min.js',
   'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js',
+  'https://unpkg.com/echarts@5/dist/echarts.min.js',
 ];
 
 /* ================= 状态 ================= */
@@ -228,9 +239,19 @@ function jsonp(url){
   _chain = p.catch(() => {});
   return p;
 }
-const iUrl = (sym) => SINA + 'InnerFuturesNewService.getMinLine?symbol=' + sym + '&type=1';
-const kUrl = (sym, t) => SINA + 'InnerFuturesNewService.getFewMinLine?symbol=' + sym + '&type=' + t;
-const dUrl = (sym) => SINA + 'InnerFuturesNewService.getDailyKLine?symbol=' + sym;
+/* 多源降级 JSONP：主源 script 加载失败 → 自动切备用源重试一次（同一新浪 API，不同域名） */
+function jsonpHost(ep){
+  return jsonp(sinaUrl(ep)).then(d => {
+    if (d === null && sinaHostIdx + 1 < SINA_HOSTS.length){
+      sinaHostIdx++;
+      return jsonp(sinaUrl(ep));
+    }
+    return d;
+  });
+}
+const iUrl = (sym) => 'InnerFuturesNewService.getMinLine?symbol=' + sym + '&type=1';
+const kUrl = (sym, t) => 'InnerFuturesNewService.getFewMinLine?symbol=' + sym + '&type=' + t;
+const dUrl = (sym) => 'InnerFuturesNewService.getDailyKLine?symbol=' + sym;
 
 /* ================= 工具 ================= */
 const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
@@ -274,12 +295,12 @@ function setStatus(msg, isErr){
 }
 
 /* ================= 数据拉取 ================= */
-async function fetchIntraday(code){ const d = await jsonp(iUrl(code)); if (Array.isArray(d)) state.intraday[code]=d; }
-async function fetchKline(code, type){ const d = await jsonp(kUrl(code, type)); if (Array.isArray(d)) state.kline[code]=d; }
+async function fetchIntraday(code){ const d = await jsonpHost(iUrl(code)); if (Array.isArray(d)) state.intraday[code]=d; }
+async function fetchKline(code, type){ const d = await jsonpHost(kUrl(code, type)); if (Array.isArray(d)) state.kline[code]=d; }
 async function fetchDaily(code, force){
   const ts = state._dailyTs[code];
   if (!force && ts && (Date.now()-ts) < DAILY_TTL) return;
-  const d = await jsonp(dUrl(code));
+  const d = await jsonpHost(dUrl(code));
   if (Array.isArray(d) && d.length){
     state.daily[code]=d;
     state._dailyTs[code]=Date.now();
@@ -320,7 +341,7 @@ function klineRows(code){
   for (const b of live)  map.set(String(b.d).slice(0,10), b);
   return Array.from(map.values()).sort((a,b)=>String(a.d)<String(b.d)?-1:1);
 }
-/* 加载每日快照历史（GitHub Pages 同源 data/history.json；不存在则忽略） */
+/* 加载每日快照历史（GitHub Pages 同源 data/history.json；不存在则忽略）+ 日内快照（data/intraday.json） */
 async function loadHistory(){
   if (typeof fetch !== 'function') return;
   try {
@@ -329,6 +350,12 @@ async function loadHistory(){
     const j = await r.json();
     if (j && Array.isArray(j.days)) state.hist = j;
   } catch(e){ /* 历史缺失/网络受限：纯实时模式不受影响 */ }
+  try {
+    const r = await fetch('data/intraday.json', { cache:'no-store' });
+    if (!r.ok) return;
+    const j = await r.json();
+    if (j && Array.isArray(j.points)) state.hist.intra = j.points;
+  } catch(e){ /* 日内快照缺失：仅缺日内虚线 */ }
 }
 /* 最新价（分时最后一点，秒级模式优先） */
 function lastPrice(code){
@@ -352,8 +379,11 @@ function renderCards(){
     const pickSec = (v) => (sq && v !== null && v !== undefined) ? v : null;
     const price = pickSec(sq && sq.latest) !== null ? sq.latest : (last ? num(last[1]) : null);
     const avg   = last ? num(last[2]) : null;
-    const pos   = pickSec(sq && sq.pos) !== null ? sq.pos : (last ? num(last[3]) : null);
-    const vol   = pickSec(sq && sq.vol) !== null ? sq.vol : (last ? num(last[4]) : null);
+    // getMinLine 行 = [time, price, avg, 分钟成交量, 持仓量]：idx3=该分钟成交量（全分钟求和=日成交量），idx4=持仓量
+    let dayVol = 0;
+    if (rows) for (const r of rows) dayVol += (num(r[3]) || 0);
+    const pos   = pickSec(sq && sq.pos) !== null ? sq.pos : (last ? num(last[4]) : null);
+    const vol   = pickSec(sq && sq.vol) !== null ? sq.vol : dayVol;
     const t     = (sq && sq.time) ? String(sq.time) : (last ? String(last[0]) : '');
     const tFmt  = (sq && sq.time) ? fmtClock(sq.time) : fmtClock(t);
     const date  = (sq && sq.date) ? String(sq.date) : ((rows && rows[0] && rows[0][6]) ? String(rows[0][6]) : todayStr());
@@ -523,7 +553,10 @@ function mostActive(prefix){
 }
 function lastVolPos(code){
   const rows = state.intraday[code];
-  if (rows && rows.length) return { vol:num(rows[rows.length-1][4]), pos:num(rows[rows.length-1][3]) };
+  if (rows && rows.length){
+    let vol = 0; for (const r of rows) vol += (num(r[3]) || 0);   // 日成交量 = 各分钟量求和
+    return { vol, pos:num(rows[rows.length-1][4]) };                // 持仓量 = 最后一根 idx4
+  }
   const sq = state.sec[code];
   return { vol: sq?num(sq.vol):null, pos: sq?num(sq.pos):null };
 }
@@ -576,6 +609,45 @@ function renderArb(){
     `对 <b>${lcLabel.label||lc}</b> × <b>${liLabel.label||lh}</b> · 量/仓 <b>${vp(vpLc.vol)}</b>/<b>${vp(vpLc.pos)}</b> vs <b>${vp(vpLh.vol)}</b>/<b>${vp(vpLh.pos)}</b><br>` +
     `LI <b>${fmt(Plh)}</b> ÷ ${ratio.toFixed(3)} + 加工 <b>${fmt(ARB.COST_LH2LC,0)}</b> → 保本LC <b>${fmt(beH2C)}</b><br>` +
     `LC现价 <b>${fmt(Plc)}</b> · 套利空间 <b>${fmt(profitH2C,0)}</b>`;
+}
+
+/* ================= 渲染：套利价差历史（日度快照 + 日内快照） ================= */
+let arbHistChart=null;
+function renderArbHist(){
+  const days = (state.hist.days||[]).filter(d => d && d.arb && d.arb.lc2lh_profit != null);
+  const intra = (state.hist.intra||[]).filter(p => p && p.lc2lh_profit != null);
+  const el = document.getElementById('arb-hist-chart');
+  if (!el) return;
+  const cnt = document.getElementById('arb-hist-count');
+  if (cnt) cnt.textContent = '· 日度 ' + days.length + ' 个 · 日内 ' + intra.length + ' 个点';
+  if (!days.length && !intra.length){
+    el.innerHTML = '<div class="hint">暂无历史快照（每日 15:30 由 GitHub Actions 自动累积；上线后每交易日 +1）</div>';
+    return;
+  }
+  if (!arbHistChart){ el.innerHTML=''; arbHistChart = echarts.init(el); }
+  const dC2H = days.map(d => [d.date + ' 15:00', d.arb.lc2lh_profit]);
+  const dH2C = days.map(d => [d.date + ' 15:00', d.arb.lh2lc_profit]);
+  const iC2H = intra.map(p => [p.date + ' ' + (p.time||'12:00'), p.lc2lh_profit]);
+  const iH2C = intra.map(p => [p.date + ' ' + (p.time||'12:00'), p.lh2lc_profit]);
+  const allT = [...dC2H, ...dH2C, ...iC2H, ...iH2C].map(p => new Date(p[0]).getTime()).filter(Number.isFinite);
+  const zline = allT.length ? [[Math.min(...allT),0],[Math.max(...allT),0]] : [];
+  arbHistChart.setOption({
+    backgroundColor:'transparent', animation:false,
+    grid:{left:60,right:16,top:30,bottom:26},
+    tooltip:{trigger:'axis',backgroundColor:'#21262d',borderColor:'#30363d',textStyle:{color:'#e6edf3'},valueFormatter:(v)=>fmt(v,0)+' 元/吨'},
+    legend:{textStyle:{color:'#8b949e',fontSize:10},top:2,right:6},
+    xAxis:{type:'time',axisLine:{lineStyle:{color:'#30363d'}},axisLabel:{color:'#8b949e',fontSize:10,formatter:(v)=>{const d=new Date(v);return d.getMonth()+1+'/'+d.getDate();}}},
+    yAxis:{scale:true,splitLine:{lineStyle:{color:'#21262d'}},axisLabel:{color:'#8b949e',fontSize:10,formatter:(v)=>fmt(v,0)}},
+    series:[
+      {name:'碳转氢 日度',type:'line',data:dC2H,showSymbol:true,symbolSize:4,lineStyle:{width:1.5,color:'#58a6ff'},itemStyle:{color:'#58a6ff'}},
+      {name:'氢转碳 日度',type:'line',data:dH2C,showSymbol:true,symbolSize:4,lineStyle:{width:1.5,color:'#bc8cff'},itemStyle:{color:'#bc8cff'}},
+      ...(intra.length ? [
+        {name:'碳转氢 日内',type:'line',data:iC2H,showSymbol:false,lineStyle:{width:1,type:'dashed',color:'#58a6ff',opacity:.7}},
+        {name:'氢转碳 日内',type:'line',data:iH2C,showSymbol:false,lineStyle:{width:1,type:'dashed',color:'#bc8cff',opacity:.7}}
+      ]:[]),
+      {name:'零线',type:'line',data:zline,showSymbol:false,silent:true,lineStyle:{width:1,type:'dotted',color:'#8b949e'}}
+    ]
+  }, true);
 }
 
 /* ================= 主刷新 ================= */
@@ -694,6 +766,7 @@ async function start(){
     if (klineChart) klineChart.resize();
     if (intradayChart) intradayChart.resize();
     if (spreadChart) spreadChart.resize();
+    if (arbHistChart) arbHistChart.resize();
   });
   try {
     await loadECharts(0);
@@ -705,7 +778,7 @@ async function start(){
   await refreshQuote();
   await refreshKline();
   resolveAllBase();
-  renderCards(); renderIntraday(); renderSpread(); renderArb();
+  renderCards(); renderIntraday(); renderSpread(); renderArb(); renderArbHist();
   setInterval(refreshQuote, QUOTE_MS);
   setInterval(refreshKline, KLINE_MS);
 

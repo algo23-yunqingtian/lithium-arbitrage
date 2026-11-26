@@ -2,10 +2,20 @@ name: daily-snapshot
 
 on:
   schedule:
-    # 北京时间 15:30（07:30 UTC）工作日 —— 期货日盘 15:00 收盘后抓当日快照
+    # 北京时间 11:00 / 13:30 / 14:30 / 15:30（UTC 03:00 / 05:30 / 06:30 / 07:30）工作日
+    # 盘中多次快照（补日内粒度）+ 15:30 收盘日度存档（长期回溯）
+    - cron: '0 3 * * 1-5'
+    - cron: '30 5 * * 1-5'
+    - cron: '30 6 * * 1-5'
     - cron: '30 7 * * 1-5'
   workflow_dispatch: {}
 
+concurrency:
+  group: snapshot
+  cancel-in-progress: false
+
+# 关键：workflow 内显式声明 contents:write —— 覆盖仓库级默认「Read only」设置，
+# 因此无需到 Settings→Actions→General 手工改 Workflow permissions（GITHUB_TOKEN 已获写权限）。
 permissions:
   contents: write
 
@@ -17,16 +27,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Fetch daily snapshot
+      - name: Fetch snapshot
         run: node snapshot_daily.mjs
       - name: Commit data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/history.json
+          git add data/history.json data/intraday.json
           if git diff --cached --quiet; then
             echo "no data change"
           else
-            git commit -m "data: 每日快照 $(date -u +%F)"
+            git commit -m "data: 快照 $(date -u +%F) $(date -u +%H:%M)Z"
             git push
           fi

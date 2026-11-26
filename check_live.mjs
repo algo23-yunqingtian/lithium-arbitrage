@@ -87,7 +87,7 @@ check('已集成秒级盘口（fetchSec + Workers）', code.includes('async func
 check('WORKER_URL 默认留空 = 不启用秒级（纯分钟级不受影响）', /const WORKER_URL\s*=\s*''/.test(code));
 check('秒级失败自动降级为分钟级', code.includes('已降级为分钟级'));
 check('LI 缺失昨结算由秒级盘口补齐', code.includes('state.baseType[c.code] = \'settle\''));
-check('实时卡片渲染数量 = 5', cards.children.length === 5, `got ${cards.children.length}`);
+check('实时卡片渲染数量 = 7', cards.children.length === 7, `got ${cards.children.length}`);
 check('状态栏有更新时间', (status.textContent||'').includes('更新'), status.textContent);
 check('价差最新值已更新', spreadLatest.textContent && spreadLatest.textContent !== '—', spreadLatest.textContent);
 
@@ -108,6 +108,18 @@ check('P0: 自动选最活跃合约（mostActive 按量）', code.includes('func
 check('P0: 套利机会徽标（arb-lc2lh-flag/arb-lh2lc-flag）', html.includes('id="arb-lc2lh-flag"') && html.includes('id="arb-lh2lc-flag"'));
 check('P0: 套利面板显示 LC/LI 量仓', code.includes('量/仓') && code.includes('lastVolPos'));
 check('check_arb.mjs 套利自检脚本存在', fs.existsSync('check_arb.mjs'));
+
+// ==== 本轮：字段错位修复 / P1 套利历史图 / 日内快照 / P2 多源降级 + 合约扩充 ====
+check('修复: 成交量=各分钟求和（sum idx3），持仓=idx4', code.includes('dayVol += (num(r[3]) || 0)') && code.includes('num(last[4])'));
+check('P1: 套利价差历史时序图容器（arb-hist-chart）', html.includes('id="arb-hist-chart"') && code.includes('function renderArbHist'));
+check('P1: 历史图用时间轴（日度+日内同图）', code.includes("xAxis:{type:'time'") && code.includes('零线'));
+check('P1: 日内快照加载（data/intraday.json → state.hist.intra）', code.includes("'data/intraday.json'") && code.includes('state.hist.intra'));
+check('P1: snapshot 脚本写入日内快照（intraday.json 追加滚动）', fs.readFileSync('snapshot_daily.mjs','utf8').includes('intraday.json') && fs.readFileSync('snapshot_daily.mjs','utf8').includes('intra.points.push'));
+check('P1: workflow 盘中多次快照（cron 含 03:00/05:30/06:30/07:30）', code.includes('daily-snapshot.yml') || fs.readFileSync('.github/workflows/daily-snapshot.yml','utf8').includes('0 3 * * 1-5'));
+check('P2: 合约扩充至 7（含 LC2711/LI2711）', code.includes("code:'LC2711'") && code.includes("code:'LI2711'"));
+check('P2: ECharts 第5 CDN（unpkg）', code.includes('unpkg.com/echarts'));
+check('P2: 新浪多源降级（stock2→stock 双 host 备用）', code.includes('SINA_HOSTS') && code.includes('function jsonpHost'));
+check('P2: 量仓字段已修正（snapshot 脚本 liveVol=求和/livePos=idx4）', fs.readFileSync('snapshot_daily.mjs','utf8').includes('dayVol += (num(r[3]) || 0)') && fs.readFileSync('snapshot_daily.mjs','utf8').includes('livePos: num(last&&last[4])'));
 
 console.log(pass ? '\n=== 全部通过 ===' : '\n=== 存在失败 ===');
 process.exit(pass ? 0 : 1);

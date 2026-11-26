@@ -1,6 +1,6 @@
-// 加工套利自检：实时拉 5 合约，计算 LC↔LI 双方向套利价差，并找出最活跃合约对
+// 加工套利自检：实时拉 7 合约，计算 LC↔LI 双方向套利价差，并找出最活跃合约对
 // 运行：node check_arb.mjs
-const CONTRACTS = ['LC2705','LC2707','LC2709','LI2707','LI2709'];
+const CONTRACTS = ['LC2705','LC2707','LC2709','LC2711','LI2707','LI2709','LI2711'];
 const SINA = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/';
 const UA = { 'User-Agent': 'Mozilla/5.0' };
 // 与 index.html / snapshot_daily.mjs 的 ARB 一致
@@ -19,7 +19,8 @@ for (const c of CONTRACTS){
   ]);
   const last = intra.length?intra[intra.length-1]:null;
   const dk = daily.length?daily[daily.length-1]:null;
-  q[c] = { price: num(last&&last[1]), vol: num(last&&last[4]), pos: num(last&&last[3]),
+  let dayVol = 0; for (const r of intra) dayVol += (num(r[3]) || 0);   // 日成交量 = 各分钟量求和
+  q[c] = { price: num(last&&last[1]), vol: dayVol, pos: num(last&&last[4]),   // 持仓量 = 最后一根 idx4
            close: num(dk&&dk.c), settle: num(dk&&dk.s), o: num(dk&&dk.o) };
 }
 console.log('==== 实时行情（分时最新点） ====');

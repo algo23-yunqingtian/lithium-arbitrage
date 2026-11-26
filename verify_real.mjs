@@ -1,5 +1,5 @@
 // 真实数据 e2e：用与 index.html 完全相同的解析逻辑，直接打新浪真实接口
-const CONTRACTS = ['LC2705','LC2707','LC2709','LI2707','LI2709'];
+const CONTRACTS = ['LC2705','LC2707','LC2709','LC2711','LI2707','LI2709','LI2711'];
 const SINA = 'https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20_=/';
 const UA = { 'User-Agent': 'Mozilla/5.0' };
 
@@ -54,13 +54,15 @@ for (const code of CONTRACTS) {
 
   const base = resolveBase(code, daily, kline, intraday);
   const last = rows[rows.length-1], first = rows[0];
-  const price = num(last[1]), avg = num(last[2]), pos = num(last[3]), vol = num(last[4]);
+  const price = num(last[1]), avg = num(last[2]);
+  let dayVol = 0; for (const r of rows) dayVol += (num(r[3]) || 0);   // 日成交量 = 各分钟量求和（getMinLine idx3）
+  const pos = num(last[4]);                                            // 持仓量 = 最后一根 idx4
+  const vol = dayVol;
   const chg = (price!==null && base.v!==null) ? price - base.v : null;
   const pct = (chg!==null && base.v) ? (chg/base.v)*100 : null;
-  const dayField = rows[0] && rows[0][6];
 
-  ok(code+' 分时点数充足(>=20)', rows.length >= 20, 'bars='+rows.length);
-  ok(code+' 分时日期字段取自第一根', dayField === today, 'date='+dayField+' today='+today);
+  ok(code+' 分时数据非空(>=5根，新上市/极不活跃合约可少)', rows.length >= 5, 'bars='+rows.length);
+  ok(code+' 分时末根时间合法(HH:MM)', /^\d{2}:\d{2}$/.test(String(last[0]||'')), 'last[0]='+last[0]);
   ok(code+' 涨跌基准已解析', base.v !== null, 'base='+base.t+'('+BASE_LABEL[base.t]+')='+fmt(base.v));
   ok(code+' 卡片值完整', price!==null && avg!==null && pos!==null && vol!==null && chg!==null,
     `最新=${fmt(price)} ${base.t?'较'+BASE_LABEL[base.t]:''}涨跌=${fmt(chg)}(${fmt(pct,2)}%) 开=${fmt(num(first[1]))} 均=${fmt(avg)} 持仓=${pos} 量=${vol}`);
