@@ -26,8 +26,8 @@
 - [x] 页面开发完成，三套验证全绿
 - [x] 本地 git 仓库已初始化并提交（`88b9659`，2 commits）
 - [x] 远端已配置为 SSH
-- [x] **已推送 GitHub**：`main = 88b9659`（`github.com:algo23-yunqingtian/lithium-arbitrage.git`）
-- [ ] **开启 GitHub Pages**（`Settings → Pages → Deploy from branch → main / (root)`）—— 唯一剩余步骤
+- [x] **已推送 GitHub**：`main = 77f049f`（`github.com:algo23-yunqingtian/lithium-arbitrage.git`）
+- [x] **GitHub Pages 已开启并上线**：`https://algo23-yunqingtian.github.io/lithium-arbitrage/`（HTTP 200，2026-11-26 实测验证，标题/合约/配置均正确）
 
 **后续推送（其他 agent）**：
 ```powershell
@@ -35,8 +35,7 @@ git -C 'D:\DSH_WORK\github工作\lithium-arbitrage' push
 # 本仓库已配置 core.sshCommand 自动使用账号级 SSH key（~/.ssh/id_ed25519_github），直接 push 即可
 ```
 
-**Pages 配置页**：`https://github.com/algo23-yunqingtian/lithium-arbitrage/settings/pages`
-→ Source: `Deploy from a branch` → Branch: `main` / `/ (root)` → Save。生效后访问 `https://algo23-yunqingtian.github.io/lithium-arbitrage/`。
+**Pages 配置**：`Settings → Pages → Deploy from a branch → main / (root)`（已完成）。线上地址 `https://algo23-yunqingtian.github.io/lithium-arbitrage/`。
 
 ## 4. 文件说明
 
