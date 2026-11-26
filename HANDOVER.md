@@ -24,19 +24,19 @@
 ## 3. 当前状态（⚠️ 先看这里）
 
 - [x] 页面开发完成，三套验证全绿
-- [x] 本地 git 仓库已初始化并提交（`f0e349f`，8 文件 / 1139 行）
+- [x] 本地 git 仓库已初始化并提交（`88b9659`，2 commits）
 - [x] 远端已配置为 SSH
-- [ ] **GitHub 上的 `lithium-arbitrage` 空仓库尚未创建** → 无法 push
-- [ ] 建仓后需开启 GitHub Pages（`Settings → Pages → Deploy from branch → main / (root)`）
+- [x] **已推送 GitHub**：`main = 88b9659`（`github.com:algo23-yunqingtian/lithium-arbitrage.git`）
+- [ ] **开启 GitHub Pages**（`Settings → Pages → Deploy from branch → main / (root)`）—— 唯一剩余步骤
 
-**建仓链接（点一下即可，表单已预填）**：
-`https://github.com/new?name=lithium-arbitrage`
-→ 创建者 `algo23-yunqingtian`，Public，**不要**初始化 README/License（本地已有完整内容，否则 push 冲突）。
-
-建仓完成后，其他 agent 可直接执行：
+**后续推送（其他 agent）**：
 ```powershell
-git -C 'D:\DSH_WORK\github工作\lithium-arbitrage' push -u origin main
+git -C 'D:\DSH_WORK\github工作\lithium-arbitrage' push
+# 本仓库已配置 core.sshCommand 自动使用账号级 SSH key（~/.ssh/id_ed25519_github），直接 push 即可
 ```
+
+**Pages 配置页**：`https://github.com/algo23-yunqingtian/lithium-arbitrage/settings/pages`
+→ Source: `Deploy from a branch` → Branch: `main` / `/ (root)` → Save。生效后访问 `https://algo23-yunqingtian.github.io/lithium-arbitrage/`。
 
 ## 4. 文件说明
 
@@ -88,7 +88,8 @@ git -C 'D:\DSH_WORK\github工作\lithium-arbitrage' push -u origin main
 
 **本项目凭证一律走 SSH，不落任何明文 token。**
 
-1. **推送凭证**：本机 `~/.ssh/id_ed25519_agent`（已验证对 `algo23-yunqingtian` 账号有效，`git ls-remote` 可取到 commit）。所有 agent 直接用 SSH 推送即可，**不需要、也不应索要 token**。
+1. **推送凭证**：账号级 SSH key `~/.ssh/id_ed25519_github`（已加入 GitHub 账号 SSH keys）。本仓库已配置 `core.sshCommand` 指向 `~/.ssh/lithium_ssh_config`（专用于 github.com，仅用这把 key），其他 agent 直接 `git push` 即可，**不需要、也不应索要 token**。
+   ⚠️ `~/.ssh/id_ed25519_agent` 是 framework-tree 的**部署密钥**（deploy key），只能访问 framework-tree，**勿**用于新仓库。
 2. **禁止行为**：不要把 PAT / API token / 密码 / cookie 写入任何文件（包括本文档、README、脚本、日志）。仓库 `.gitignore` 已含 `*.env` / `.env*` / `*.pem` / `*.key` / `secrets/` 兜底。
 3. **若确需 token 才能完成某操作**（例如调 GitHub REST API 开 Pages）：
    - 让用户在**本地终端**里临时导出为环境变量（`$env:GH_TOKEN=...`），**用后即弃**
