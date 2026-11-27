@@ -171,6 +171,6 @@ node snapshot_daily.mjs # 手动抓一次快照（覆盖/追加今天，写入�
 - **无需修改仓库设置**：workflow 已显式 `permissions: contents: write`，GitHub 文档规定 workflow 内声明**覆盖**仓库级默认（Read only）设置，GITHUB_TOKEN 已获写权限，每日快照 push 必然成功。
 - 本机无 `gh` CLI、无 PAT，无法调 REST API 改仓库设置；且**确实不必要**。首个真实 cron 验证：**2026-11-27（明天）15:30 北京**，届时 `history.json` 应新增 2026-11-27 一条。
 
-### 12.6 未做 / 需外部凭据
-- **秒级盘口（Workers）**：本机 `wrangler` 未安装、无 Cloudflare 凭据，无法部署。需用户：装 wrangler + `wrangler login`，然后 `wrangler versions deploy workers/sina-quotes.worker.js --name sina-quotes`，把 URL 填入 `index.html` `WORKER_URL`。
+### 12.6 未做 / 需外部凭据（已备好可执行脚本）
+- **秒级盘口（Workers）**：已写好**可执行脚本 `deploy_worker.ps1`**（一键：鉴权→部署→写回 `index.html` WORKER_URL→验证）。本机无 Cloudflare 凭据，无法实际部署，但你只需提供 Cloudflare API Token（`dash.cloudflare.com → My Profile → API Tokens → Create Token → 「Workers Scripts: Edit」`），在会话里临时 `$env:CLOUDFLARE_API_TOKEN='<token>'`（用后即弃，不落盘），再 `pwsh deploy_worker.ps1 -SetPage` 即一键启用秒级。已验证：npx 可拉 wrangler 4.168.0、部署命令参数校验通过（唯一报错=缺 token）、无凭据时脚本给出清晰指引并 exit 2。
 - **腾讯 ifzq 备用源**：实测 `Can't load controller:FuturesController`，端点不可用，未纳入降级链（新浪双 host 已够）。

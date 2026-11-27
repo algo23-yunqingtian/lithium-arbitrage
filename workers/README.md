@@ -17,6 +17,18 @@
 
 ### 方式一：命令行（推荐）
 
+**一键脚本（Windows，推荐）**：仓库根目录有可执行脚本 `deploy_worker.ps1`，自动处理鉴权/部署/写回页面/验证：
+
+```powershell
+# 1) 提供 Cloudflare 凭据（二选一，均不落盘）
+$env:CLOUDFLARE_API_TOKEN = '<你的 API Token>'   # 推荐：无需浏览器，agent 可代跑
+# 或 npx --yes wrangler login                    # 浏览器授权（需本机浏览器）
+
+# 2) 一键部署 + 自动写回 index.html WORKER_URL（可选 -SetToken 设防刷 token）
+pwsh deploy_worker.ps1 -SetPage
+```
+
+手动等价命令：
 ```bash
 npm i -g wrangler          # Cloudflare 官方 CLI
 wrangler login             # 浏览器登录 cloudflare.com 账号
@@ -24,6 +36,8 @@ wrangler versions deploy workers/sina-quotes.worker.js --name sina-quotes
 # 或本地迭代调试：
 wrangler dev workers/sina-quotes.worker.js
 ```
+
+> 凭据安全：`deploy_worker.ps1` 只读 `CLOUDFLARE_API_TOKEN` / `WORKER_TOKEN` 环境变量，**绝不写入任何文件或 commit**（符合 HANDOVER §8）。
 
 ### 方式二：纯网页
 

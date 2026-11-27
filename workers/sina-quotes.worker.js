@@ -17,7 +17,7 @@ const UPSTREAM_HEADERS = {
   'Referer': 'https://finance.sina.com.cn',
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
 };
-const DEFAULT_SYMBOLS = 'LC2705,LC2707,LC2709,LI2707,LI2709';
+const DEFAULT_SYMBOLS = 'LC2705,LC2707,LC2709,LC2711,LI2707,LI2709,LI2711';
 const MAX_SYMBOLS = 30;
 
 // 新浪 hq.sinajs.cn 期货字段下标（nf_<CODE> 序列）
