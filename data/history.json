@@ -10,8 +10,8 @@
  ],
  "arb": {
   "ratio": 1.1351,
-  "costLC2LH": 5000,
-  "costLH2LC": 7000
+  "costLC2LH": 7000,
+  "costLH2LC": 5000
  },
  "days": [
   {

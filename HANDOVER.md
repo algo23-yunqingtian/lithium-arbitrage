@@ -2,7 +2,7 @@
 
 > 本文档面向**所有 agent**：本项目的位置、能力、验证方式、上线状态、凭证安全约定全部在此。
 > 维护者：DeepSeek Harness / SenseNova agent（2026-11-26 建立）
-> 最近更新：2026-11-27（日度热度数据管线 + 实时方案结论）
+> 最近更新：2026-11-27（加工费方向修正：碳转氢7000/氢转碳5000，按产品计价）
 
 ---
 
@@ -129,10 +129,10 @@ node snapshot_daily.mjs # 手动抓一次快照（覆盖/追加今天，写入�
 - ⚠️ **氢氧化锂(LI) 期货 2026-11-26 新上市**，新浪仅有当日数据（1分≈225 根、60分≈4 根）。你看到"四五根K线"不是 bug，是 LI 历史只有今天。LC 历史充足（1分 1023 根、日K 128 根）。
 
 ### 11.2 LC ↔ LI 加工套利（a/b 变量）
-- 公式（加工费按 元/吨氢氧化锂 报价）：
-  - **LC→LI（碳转氢）**：1吨LC + 加工 → `MW_LH/MW_LC`(=42/37≈1.135) 吨LI；每吨LC加工成本 = `COST_LC2LH × ratio`；套利利润 = `ratio×LI价 − LC价 − COST_LC2LH×ratio`；保本LI价 = `(LC价 + COST_LC2LH×ratio)/ratio`。
-  - **LI→LC（氢转碳）**：1吨LI + 加工 → `1/ratio`(=0.881) 吨LC；套利利润 = `LC价/ratio − LI价 − COST_LH2LC`；保本LC价 = `(LI价 + COST_LH2LC)×ratio`。
-- 参数在 `index.html` 顶部 `ARB` 对象（`MW_LH=42, MW_LC=37, COST_LC2LH=5000, COST_LH2LC=7000`），**页面输入框可直接改**，全部计算即时联动。改代码后请同步 `snapshot_daily.mjs` 里的 `ARB`。
+- 公式（加工费按**产品**计价：碳转氢 元/吨电氢，氢转碳 元/吨电碳）：
+  - **LC→LI（碳转氢，苛化）**：1吨LC + 加工 → `MW_LH/MW_LC`(=42/37≈1.135) 吨电氢；每吨LC加工成本 = `COST_LC2LH × ratio`；套利利润 = `ratio×LI价 − LC价 − COST_LC2LH×ratio`；保本LI价 = `(LC价 + COST_LC2LH×ratio)/ratio`。
+  - **LI→LC（氢转碳，碳化）**：1吨电氢 + 加工 → `1/ratio`(=0.881) 吨电碳；每吨电氢加工成本 = `COST_LH2LC / ratio`；套利利润 = `LC价/ratio − LI价 − COST_LH2LC/ratio`；保本LC价 = `(LI价 + COST_LH2LC/ratio)×ratio`。
+- 参数在 `index.html` 顶部 `ARB` 对象（`MW_LH=42, MW_LC=37, COST_LC2LH=7000, COST_LH2LC=5000`），**页面输入框可直接改**，全部计算即时联动。改代码后请同步 `snapshot_daily.mjs` 里的 `ARB`。
 - 数值交叉验证通过：两个方向保本价回代后套利空间 = 0.000。
 - **P0 增强（`60e1a10`）**：`跟随主力`开关（默认开，自动锁定当日最活跃 LC/LI 合约，手动改合约自动关闭）；两个方向带 `✅有机会/无利` 徽标（利润>0 绿色高亮）；套利卡片显示 LC/LI 量仓（提醒流动性）。
 - 套利自检：`node check_arb.mjs`（实时拉价，算两向套利空间 + 找最活跃合约对）。

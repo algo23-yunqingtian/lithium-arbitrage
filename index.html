@@ -135,8 +135,8 @@
     <label>LI(LH)合约 <select id="arb-li"></select></label>
     <label>分子量 LI <input id="arb-mwlh" type="number" step="0.1" value="42"></label>
     <label>分子量 LC <input id="arb-mwlc" type="number" step="0.1" value="37"></label>
-    <label>碳→氢加工费(元/tLI) <input id="arb-c2h" type="number" step="100" value="5000"></label>
-    <label>氢→碳加工费(元/tLI) <input id="arb-h2c" type="number" step="100" value="7000"></label>
+    <label>碳→氢加工费(元/t电氢) <input id="arb-c2h" type="number" step="100" value="7000"></label>
+    <label>氢→碳加工费(元/t电碳) <input id="arb-h2c" type="number" step="100" value="5000"></label>
     <label><input type="checkbox" id="arb-auto" checked> 跟随主力(最活跃)合约</label>
   </div>
   <div class="arb-cards">
@@ -151,7 +151,7 @@
       <div class="rows" id="arb-lh2lc-rows"></div>
     </div>
   </div>
-  <div class="arb-note">加工费按氢氧化锂(LI，即用户所称 LH)报价；转碳酸锂方向已自动乘以/除以分子量比系数。分子量或加工费改动，右侧所有计算即时联动。</div>
+  <div class="arb-note">加工费口径：碳转氢（电碳→粗电氢，苛化）按 <b>元/吨电氢(产品)</b> 计；氢转碳（粗电氢→电碳，碳化）按 <b>元/吨电碳(产品)</b> 计；分子量或加工费改动，右侧所有计算即时联动。套利基准=粗颗粒电氢（LI期货交割品级；微粉为粗颗粒研磨的溢价品种，另计研磨费）。</div>
   <div style="margin-top:10px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
     <span class="title" style="font-size:13px;">套利价差历史</span>
     <span>实线=日度快照（每日收盘） · 虚线=日内快照（盘中每2-4小时） · 上方>0 为套利机会</span>
@@ -205,8 +205,8 @@ const DAILY_TTL = 60000; // 日K最小抓取间隔（省流量）
 const ARB = {
   MW_LH: 42,        // 氢氧化锂(LI) 分子质量（a 之一）
   MW_LC: 37,        // 碳酸锂(LC) 分子质量（a 之一）
-  COST_LC2LH: 5000, // 碳转氢 加工费 元/吨LI（b 之一）
-  COST_LH2LC: 7000, // 氢转碳 加工费 元/吨LI（b 之一）
+  COST_LC2LH: 7000, // 碳转氢(电碳→粗电氢,苛化) 加工费 元/吨氢氧化锂(产品)；×ratio=元/吨LC
+  COST_LH2LC: 5000, // 氢转碳(粗电氢→电碳,碳化) 加工费 元/吨碳酸锂(产品)；÷ratio=元/吨LI
 };
 const arbRatio = () => ARB.MW_LH / ARB.MW_LC;   // 1吨LC → ratio 吨LI
 const HISTORY_PATH = 'data/history.json';       // 每日快照（GitHub 作为长期存储）
@@ -602,13 +602,14 @@ function renderArb(){
   }
   const lcLabel = CONTRACTS.find(c=>c.code===lc) || {};
   const liLabel = CONTRACTS.find(c=>c.code===lh) || {};
-  // LC→LI（碳转氢）：1吨LC + 加工 → ratio 吨LI；加工费按 元/吨LI 计 → 每吨LC加工成本 = COST_LC2LH*ratio
+  // LC→LI（碳转氢，苛化）：1吨LC + 加工 → ratio 吨电氢；加工费按 元/吨电氢(产品)计 → 每吨LC加工成本 = COST_LC2LH*ratio
   const c2hCost = ARB.COST_LC2LH * ratio;
   const profitC2H = ratio*Plh - Plc - c2hCost;       // 元/吨LC
-  const beC2H = (Plc + c2hCost)/ratio;               // 保本 LI 价
-  // LI→LC（氢转碳）：1吨LI + 加工 → 1/ratio 吨LC；加工费按 元/吨LI 计 → 每吨LI加工成本 = COST_LH2LC
-  const profitH2C = Plc/ratio - Plh - ARB.COST_LH2LC; // 元/吨LI
-  const beH2C = (Plh + ARB.COST_LH2LC)*ratio;        // 保本 LC 价
+  const beC2H = (Plc + c2hCost)/ratio;               // 保本 电氢 价
+  // LI→LC（氢转碳，碳化）：1吨电氢 + 加工 → 1/ratio 吨电碳；加工费按 元/吨电碳(产品)计 → 每吨电氢加工成本 = COST_LH2LC/ratio
+  const h2cCost = ARB.COST_LH2LC / ratio;
+  const profitH2C = Plc/ratio - Plh - h2cCost;       // 元/吨LI(电氢)
+  const beH2C = (Plh + h2cCost)*ratio;               // 保本 电碳 价
   if (c2h){ c2h.textContent = fmt(profitC2H,0) + ' 元/吨LC'; c2h.className = 'profit ' + cls(profitC2H); }
   if (h2c){ h2c.textContent = fmt(profitH2C,0) + ' 元/吨LI'; h2c.className = 'profit ' + cls(profitH2C); }
   const setFlag = (el, v) => { if (!el) return; el.textContent = v>0 ? '✅ 有机会' : (v<0 ? '无利' : '持平'); el.className = 'tag' + (v>0 ? ' ok' : ''); };
@@ -620,7 +621,7 @@ function renderArb(){
     `LI现价 <b>${fmt(Plh)}</b> · 套利空间 <b>${fmt(profitC2H,0)}</b>`;
   if (h2cRows) h2cRows.innerHTML =
     `对 <b>${lcLabel.label||lc}</b> × <b>${liLabel.label||lh}</b> · 量/仓 <b>${vp(vpLc.vol)}</b>/<b>${vp(vpLc.pos)}</b> vs <b>${vp(vpLh.vol)}</b>/<b>${vp(vpLh.pos)}</b><br>` +
-    `LI <b>${fmt(Plh)}</b> ÷ ${ratio.toFixed(3)} + 加工 <b>${fmt(ARB.COST_LH2LC,0)}</b> → 保本LC <b>${fmt(beH2C)}</b><br>` +
+    `LI <b>${fmt(Plh)}</b> ÷ ${ratio.toFixed(3)} + 加工 <b>${fmt(h2cCost,0)}</b> → 保本LC <b>${fmt(beH2C)}</b><br>` +
     `LC现价 <b>${fmt(Plc)}</b> · 套利空间 <b>${fmt(profitH2C,0)}</b>`;
 }
 

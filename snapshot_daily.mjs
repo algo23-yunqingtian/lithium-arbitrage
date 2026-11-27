@@ -9,7 +9,7 @@ const SINA_HOSTS = ['stock2.finance.sina.com.cn','stock.finance.sina.com.cn'];  
 const UA = { 'User-Agent': 'Mozilla/5.0' };
 
 // ==== 加工套利参数（与 index.html 的 ARB 保持一致；改这里后同步 index.html） ====
-const ARB = { MW_LH: 42, MW_LC: 37, COST_LC2LH: 5000, COST_LH2LC: 7000 };
+const ARB = { MW_LH: 42, MW_LC: 37, COST_LC2LH: 7000, COST_LH2LC: 5000 };
 const ratio = ARB.MW_LH / ARB.MW_LC;
 
 function strip(c){
@@ -61,7 +61,7 @@ async function main(){
     ratio: +ratio.toFixed(4), costLC2LH: ARB.COST_LC2LH, costLH2LC: ARB.COST_LH2LC,
     LC2705: lc.c, LI2707: lh.c,
     lc2lh_profit: (lc.c!=null && lh.c!=null) ? +(ratio*lh.c - lc.c - c2hCost).toFixed(1) : null,
-    lh2lc_profit: (lc.c!=null && lh.c!=null) ? +(lc.c/ratio - lh.c - ARB.COST_LH2LC).toFixed(1) : null,
+    lh2lc_profit: (lc.c!=null && lh.c!=null) ? +(lc.c/ratio - lh.c - ARB.COST_LH2LC/ratio).toFixed(1) : null,
   };
 
   // 空数据保护：主源+备用源全部失败时不写垃圾记录

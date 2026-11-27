@@ -93,7 +93,7 @@ check('价差最新值已更新', spreadLatest.textContent && spreadLatest.textC
 
 // ==== 新增：加工套利 / 持仓副图 / 缩放滑块 / 历史快照 ====
 check('加工套利面板已加入（LC↔LI 双方向卡片）', html.includes('id="arb-lc2lh"') && html.includes('id="arb-lh2lc"'));
-check('加工套利 a/b 变量可配置（分子量+加工费）', code.includes('MW_LH: 42') && code.includes('MW_LC: 37') && code.includes('COST_LC2LH: 5000') && code.includes('COST_LH2LC: 7000'));
+check('加工套利 a/b 变量可配置（分子量+加工费）', code.includes('MW_LH: 42') && code.includes('MW_LC: 37') && code.includes('COST_LC2LH: 7000') && code.includes('COST_LH2LC: 5000'));
 check('加工套利 1t LC→ratio t LI 换算（42/37）', code.includes('const arbRatio = () => ARB.MW_LH / ARB.MW_LC'));
 check('加工套利双方向含系数（转碳酸锂乘/除系数）', code.includes('ratio*Plh - Plc') && code.includes('Plc/ratio - Plh'));
 check('K线含持仓副图（.p 字段，实时）', code.includes("rows.map(r => num(r.p)||0)") && code.includes("name:'持仓'"));
