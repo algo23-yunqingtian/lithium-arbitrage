@@ -2,7 +2,7 @@
 
 > 本文档面向**所有 agent**：本项目的位置、能力、验证方式、上线状态、凭证安全约定全部在此。
 > 维护者：DeepSeek Harness / SenseNova agent（2026-11-26 建立）
-> 最近更新：2026-11-26（P1+P2 上线，`0214c15`）
+> 最近更新：2026-11-27（日度热度数据管线 + 实时方案结论）
 
 ---
 
@@ -174,3 +174,36 @@ node snapshot_daily.mjs # 手动抓一次快照（覆盖/追加今天，写入�
 ### 12.6 未做 / 需外部凭据（已备好可执行脚本）
 - **秒级盘口（Workers）**：已写好**可执行脚本 `deploy_worker.ps1`**（一键：鉴权→部署→写回 `index.html` WORKER_URL→验证）。本机无 Cloudflare 凭据，无法实际部署，但你只需提供 Cloudflare API Token（`dash.cloudflare.com → My Profile → API Tokens → Create Token → 「Workers Scripts: Edit」`），在会话里临时 `$env:CLOUDFLARE_API_TOKEN='<token>'`（用后即弃，不落盘），再 `pwsh deploy_worker.ps1 -SetPage` 即一键启用秒级。已验证：npx 可拉 wrangler 4.168.0、部署命令参数校验通过（唯一报错=缺 token）、无凭据时脚本给出清晰指引并 exit 2。
 - **腾讯 ifzq 备用源**：实测 `Can't load controller:FuturesController`，端点不可用，未纳入降级链（新浪双 host 已够）。
+
+---
+
+## 13. 日度「热度数据」管线（2026-11-27，新功能）
+
+### 13.1 数据源：SMM 日度情绪因子
+- **热度数据 = SMM（有色网）日度情绪因子**：`成交情绪` / `出货情绪` / `购货情绪`，各品种每天一个值，数值越高越活跃。
+- 已定位到两份源文件（本地桌面）：
+  - **LC（碳酸锂）**：`D:\Users\YAQH\Desktop\AI碳酸锂.xlsx` → 表「日度价」K/L/M 列，**2025-03-10 ~ 2026-08-18，353 点**。
+  - **LTH（氢氧化锂）**：`D:\Users\YAQH\Desktop\氢氧化锂数据-田允晴.xlsx` → 表「出购货情绪因子」I/J/K 列，**2025-04-23 ~ 2026-01-19，181 点**。
+  - ⚠️ 两份都**落后于今天**（LC 停 08-18、LTH 停 01-19）——正是需要「每日 16 点后刷插件」补数据的原因。后续你逐步补/提交数据时，改 `sync_heat.py` 顶部的 `SOURCES` 即可换源/加源。
+
+### 13.2 管线（能跑通）
+```
+每日16点后：Excel 刷「有色网插件」→ 新数据写入本地 xlsx
+        ↓
+python sync_heat.py   读取 xlsx（openpyxl）→ 按日期去重合并 → 写 data/heat.json
+        ↓
+sync_heat.ps1         git add/commit/push → GitHub Pages 更新（约1分钟）
+        ↓
+index.html 热度面板    fetch data/heat.json → ECharts 6线图（LC实线/LTH虚线 × 成交/出货/购货）
+```
+- **存储 = `data/heat.json`**（GitHub 即云数据库，与 `history.json`/`intraday.json` 同模式）。结构：`{meta, days:[{date, LC:{成交,出货,购货}, LTH:{...}}]}`。
+- **每日一键**：`pwsh sync_heat.ps1`（入库+提交+推送）。可选 `-NoPush` 只入库。
+- **依赖**：本机 `pip install openpyxl`（已装）；同步脚本仅在本地跑（GitHub Actions 访问不到本地 xlsx）。
+- 已用真实数据种子入库：`data/heat.json` 353 天（2025-03-10 起）。
+- **算术指标**：待用户提供公式（如 LC−LTH 热度差、热度×价差等）后，在 `sync_heat.py` 里加派生字段 + `renderHeat()` 加序列即可。当前 `renderHeat()` 展示原始 6 条情绪因子线。
+
+### 13.3 实时（3秒）唯一可行路径 = Cloudflare Workers（需 token）
+- **根因**：新浪唯一秒级源 `hq.sinajs.cn` **强校验 Referer**（无 Referer → 403 实测），且浏览器跨域直连被 CORS 拦。已实测：`getMinLine` 分钟K 在分钟内**不跳动**（T0/T4 间隔4秒最后一根完全一致），所以顶部报价最多每分钟才变一次——不是 bug，是分钟K 的固有限制。
+- **免 token 方案全灭**：公共代理 allorigins/codetabs 超时、corsproxy.io 401、腾讯 `qt.gtimg.cn` 对商品期货全 `none_match`、Eastmoney 连接被关闭。**唯一正解 = `workers/sina-quotes.worker.js`（Cloudflare Workers，服务端带 Referer 转发）**。
+- **状态**：前端 `index.html` 已就绪（`WORKER_URL` 填入即启用秒级 1.5s 轮询，连续失败自动降级分钟级）；`deploy_worker.ps1` 已备好。**只差你的 Cloudflare API Token**（创建：`dash.cloudflare.com → My Profile → API Tokens → Create Token → 「Workers Scripts: Edit」`），提供后我 `$env:CLOUDFLARE_API_TOKEN='<token>'` + `pwsh deploy_worker.ps1 -SetPage` 即上线。
+- 若你有自有服务器/VPS，也可用任意带 Referer 的反代适配（改 `WORKER_URL` 指向它即可）。

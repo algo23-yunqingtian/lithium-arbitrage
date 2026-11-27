@@ -160,6 +160,19 @@
   <div class="chartbox" id="arb-hist-chart" style="height:210px;margin-top:6px;"><div class="hint">套利价差历史加载中…</div></div>
 </div>
 
+<div class="arb-panel">
+  <div class="head">
+    <span class="title">市场热度 · SMM 日度情绪因子（成交/出货/购货）</span>
+    <span class="badge" id="heat-latest">加载中…</span>
+  </div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">
+    实线=碳酸锂(LC) · 虚线=氢氧化锂(LI/LTH) · 蓝=成交 绿=出货 橙=购货 · 数值越高越活跃
+    <span style="margin-left:8px;">数据 <code>data/heat.json</code>（每日16点后刷有色网插件 → sync_heat.ps1 入库推送）</span>
+  </div>
+  <div class="chartbox" id="heat-chart" style="height:230px;margin-top:6px;"><div class="hint">热度数据加载中…</div></div>
+  <div style="margin-top:6px;font-size:11px;color:var(--muted);" id="heat-note"></div>
+</div>
+
 <div class="foot">
   数据源：新浪财经期货行情接口（免费、无需token、JSONP 跨域直连）· 涨跌基准自动降级链：昨结算 → 昨收 → 当日开盘<br>
   仓库 <code>algo23-yunqingtian/lithium-arbitrage</code> · 纯静态页面，GitHub Pages · 碳酸锂(LC) / 氢氧化锂(LI) 均为广州期货交易所品种 · 点击卡片切换焦点合约<br>
@@ -220,6 +233,7 @@ const state = {
   klineType: 1,        // 1/3/5/15/30/60 或 'daily'
   paused:false, lastUpdate:null, _dailyTs:{},
   hist:{ days:[], arb:null },   // 每日快照历史（GitHub 长期存储）
+  heat:null,                     // 日度热度数据（SMM 情绪因子，data/heat.json）
 };
 
 /* ================= JSONP（串行，规避 window._ 覆盖） ================= */
@@ -341,21 +355,20 @@ function klineRows(code){
   for (const b of live)  map.set(String(b.d).slice(0,10), b);
   return Array.from(map.values()).sort((a,b)=>String(a.d)<String(b.d)?-1:1);
 }
-/* 加载每日快照历史（GitHub Pages 同源 data/history.json；不存在则忽略）+ 日内快照（data/intraday.json） */
+/* 加载每日快照历史（GitHub Pages 同源 data/history.json；不存在则忽略）+ 日内快照（data/intraday.json）+ 热度（data/heat.json） */
 async function loadHistory(){
   if (typeof fetch !== 'function') return;
-  try {
-    const r = await fetch(HISTORY_PATH, { cache:'no-store' });
-    if (!r.ok) return;
-    const j = await r.json();
-    if (j && Array.isArray(j.days)) state.hist = j;
-  } catch(e){ /* 历史缺失/网络受限：纯实时模式不受影响 */ }
-  try {
-    const r = await fetch('data/intraday.json', { cache:'no-store' });
-    if (!r.ok) return;
-    const j = await r.json();
-    if (j && Array.isArray(j.points)) state.hist.intra = j.points;
-  } catch(e){ /* 日内快照缺失：仅缺日内虚线 */ }
+  const get = async (p, apply) => {
+    try {
+      const r = await fetch(p, { cache:'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      if (j) apply(j);
+    } catch(e){ /* 历史/日内/热度缺失或网络受限：纯实时模式不受影响 */ }
+  };
+  await get(HISTORY_PATH, j => { if (Array.isArray(j.days)) state.hist = j; });
+  await get('data/intraday.json', j => { if (Array.isArray(j.points)) state.hist.intra = j.points; });
+  await get('data/heat.json', j => { if (Array.isArray(j.days)) state.heat = j; });
 }
 /* 最新价（分时最后一点，秒级模式优先） */
 function lastPrice(code){
@@ -650,6 +663,56 @@ function renderArbHist(){
   }, true);
 }
 
+/* ================= 渲染：市场热度（SMM 日度情绪因子：成交/出货/购货） ================= */
+let heatChart=null;
+const HEAT_KEYS = [['成交','#58a6ff'],['出货','#3fb950'],['购货','#f0883e']];
+function renderHeat(){
+  const el = document.getElementById('heat-chart');
+  if (!el) return;
+  const days = (state.heat && state.heat.days) ? state.heat.days : [];
+  const latest = document.getElementById('heat-latest');
+  const note = document.getElementById('heat-note');
+  if (latest) latest.textContent = days.length ? ('共 ' + days.length + ' 个交易日 · 最新 ' + days[days.length-1].date) : '暂无数据';
+  if (!days.length){
+    el.innerHTML = '<div class="hint">暂无热度数据（data/heat.json；每日16点后刷有色网插件 → sync_heat.ps1 入库推送）</div>';
+    return;
+  }
+  if (!heatChart){ el.innerHTML=''; heatChart = echarts.init(el); }
+  const series = [];
+  const sIdx = { LC:{}, LTH:{} };
+  for (const v of ['LC','LTH']){
+    for (const [k,color] of HEAT_KEYS){
+      sIdx[v][k] = series.length;
+      series.push({
+        name: (v==='LC'?'碳酸锂':'氢氧化锂') + '·' + k, type:'line', data:[], showSymbol:false,
+        lineStyle:{ width:1.5, color, ...(v==='LTH'?{type:'dashed'}:{}) },
+        itemStyle:{ color }
+      });
+    }
+  }
+  for (const d of days){
+    const t = d.date + ' 15:00';
+    for (const v of ['LC','LTH']){
+      const rec = d[v];
+      if (!rec) continue;
+      for (const [k] of HEAT_KEYS){
+        const val = rec[k];
+        if (val != null) series[sIdx[v][k]].data.push([t, val]);
+      }
+    }
+  }
+  heatChart.setOption({
+    backgroundColor:'transparent', animation:false,
+    grid:{left:44,right:16,top:30,bottom:26},
+    tooltip:{trigger:'axis',backgroundColor:'#21262d',borderColor:'#30363d',textStyle:{color:'#e6edf3'},valueFormatter:(v)=>fmt(v,2)},
+    legend:{textStyle:{color:'#8b949e',fontSize:10},top:2,right:6,type:'scroll'},
+    xAxis:{type:'time',axisLine:{lineStyle:{color:'#30363d'}},axisLabel:{color:'#8b949e',fontSize:10,formatter:(v)=>{const d=new Date(v);return d.getMonth()+1+'/'+d.getDate();}}},
+    yAxis:{scale:true,splitLine:{lineStyle:{color:'#21262d'}},axisLabel:{color:'#8b949e',fontSize:10,formatter:(v)=>fmt(v,2)}},
+    series
+  }, true);
+  if (note) note.textContent = '算术指标（如 LC−LTH 热度差、热度×价差等）待你提供公式后接入 —— 当前展示原始 SMM 情绪因子。';
+}
+
 /* ================= 主刷新 ================= */
 async function refreshQuote(){
   if (state.paused) return;
@@ -767,6 +830,7 @@ async function start(){
     if (intradayChart) intradayChart.resize();
     if (spreadChart) spreadChart.resize();
     if (arbHistChart) arbHistChart.resize();
+    if (heatChart) heatChart.resize();
   });
   try {
     await loadECharts(0);
@@ -778,7 +842,7 @@ async function start(){
   await refreshQuote();
   await refreshKline();
   resolveAllBase();
-  renderCards(); renderIntraday(); renderSpread(); renderArb(); renderArbHist();
+  renderCards(); renderIntraday(); renderSpread(); renderArb(); renderArbHist(); renderHeat();
   setInterval(refreshQuote, QUOTE_MS);
   setInterval(refreshKline, KLINE_MS);
 
